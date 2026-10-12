@@ -25,6 +25,7 @@ import { EOL } from "os"
 import { WebCommand } from "./cli/cmd/web"
 import { PrCommand } from "./cli/cmd/pr"
 import { MemoryCommand } from "./cli/cmd/memory"
+import { CvisCommand } from "./cli/cmd/cvis"
 import { SessionCommand } from "./cli/cmd/session"
 import { DbCommand } from "./cli/cmd/db"
 import { errorMessage } from "./util/error"
@@ -101,6 +102,7 @@ const cli = yargs(args)
   .command(PrCommand)
   .command(SessionCommand)
   .command(MemoryCommand)
+  .command(CvisCommand)
   .command(PluginCommand)
   .command(DbCommand)
   .fail((msg, err) => {
