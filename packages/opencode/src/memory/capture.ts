@@ -1,19 +1,22 @@
 import { createHash } from "node:crypto"
 import os from "node:os"
 import path from "node:path"
-import { and, asc, eq, isNull } from "drizzle-orm"
+import { and, asc, eq, isNull, ne } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import {
+  MemoryEvidenceTable,
   MemoryFactTable,
   MemoryItemTable,
+  MemoryRelationTable,
   MemorySourceTable,
   MemoryTombstoneTable,
   MessageTable,
   PartTable,
   SessionTable,
 } from "@opencode-ai/core/session/sql"
+import { cosine } from "./recall"
 import { Filesystem } from "@/util/filesystem"
 import { SessionID } from "../session/schema"
 
@@ -267,10 +270,11 @@ const layer = Layer.effect(
           .pipe(Effect.orDie)
         if (dupItem.length > 0) continue
         const claimEmbedding = yield* embed(claim)
+        const newItemID = `mit_${Date.now().toString(36)}_${claimHash.slice(0, 8)}`
         yield* db
           .insert(MemoryItemTable)
           .values({
-            id: `mit_${Date.now().toString(36)}_${claimHash.slice(0, 8)}`,
+            id: newItemID,
             project_id: session.project_id,
             kind: "fact",
             status: "active",
@@ -285,6 +289,73 @@ const layer = Layer.effect(
             vault_path: vaultOk ? notePath : null,
             hash: claimHash,
             fetched_at: Date.now(),
+          })
+          .run()
+          .pipe(Effect.orDie)
+
+        // Phase 3a: detect relations with existing items in the same project.
+        if (claimEmbedding && session.project_id) {
+          const similar = yield* db
+            .select()
+            .from(MemoryItemTable)
+            .where(
+              and(
+                eq(MemoryItemTable.project_id, session.project_id),
+                ne(MemoryItemTable.id, newItemID),
+                eq(MemoryItemTable.status, "active"),
+              ),
+            )
+            .all()
+            .pipe(Effect.orDie)
+          for (const old of similar) {
+            if (!Array.isArray(old.embedding) || (old.embedding as number[]).length === 0) continue
+            const cos = cosine(claimEmbedding, old.embedding as number[])
+            if (cos === undefined) continue
+            if (cos >= 0.90) {
+              // Near-identical claim: new supersedes old.
+              yield* db
+                .update(MemoryItemTable)
+                .set({ status: "superseded" })
+                .where(eq(MemoryItemTable.id, old.id))
+                .run()
+                .pipe(Effect.orDie)
+              yield* db
+                .insert(MemoryRelationTable)
+                .values({
+                  id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
+                  from_id: newItemID,
+                  to_id: old.id,
+                  relation: "supersedes",
+                })
+                .onConflictDoNothing()
+                .run()
+                .pipe(Effect.orDie)
+            } else if (cos >= 0.75) {
+              // Related but distinct claim.
+              yield* db
+                .insert(MemoryRelationTable)
+                .values({
+                  id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
+                  from_id: newItemID,
+                  to_id: old.id,
+                  relation: "related",
+                })
+                .onConflictDoNothing()
+                .run()
+                .pipe(Effect.orDie)
+            }
+          }
+        }
+
+        // Phase 3b: evidence provenance — link item back to the source session.
+        yield* db
+          .insert(MemoryEvidenceTable)
+          .values({
+            id: `mev_${Date.now().toString(36)}_${claimHash.slice(0, 8)}`,
+            item_id: newItemID,
+            kind: "session",
+            ref: input.sessionID,
+            content: fact.slice(0, 2000),
           })
           .run()
           .pipe(Effect.orDie)

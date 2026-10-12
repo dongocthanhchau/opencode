@@ -6,6 +6,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import {
   MemoryFactTable,
   MemoryItemTable,
+  MemoryRelationTable,
   MessageTable,
   PartTable,
   SessionTable,
@@ -176,6 +177,47 @@ const layer = Layer.effect(
           score,
         })
       }
+      // Phase 3c: boost scores of items connected via relation graph (1-hop).
+      if (scored.length > 0 && itemRows.length > 0) {
+        const scoredIDs = new Set(itemRows.filter((r) => r.status !== "superseded").map((r) => r.id))
+        if (scoredIDs.size > 0) {
+          const relations = yield* db
+            .select()
+            .from(MemoryRelationTable)
+            .where(inArray(MemoryRelationTable.from_id, [...scoredIDs]))
+            .all()
+            .pipe(Effect.orDie)
+          const boostTargets = new Map<string, number>()
+          for (const rel of relations) {
+            const boost = rel.relation === "supersedes" ? 0.3 : rel.relation === "related" ? 0.15 : 0
+            if (boost > 0) boostTargets.set(rel.to_id, Math.max(boostTargets.get(rel.to_id) ?? 0, boost))
+          }
+          if (boostTargets.size > 0) {
+            const boostedRows = yield* db
+              .select()
+              .from(MemoryItemTable)
+              .where(inArray(MemoryItemTable.id, [...boostTargets.keys()]))
+              .all()
+              .pipe(Effect.orDie)
+            for (const row of boostedRows) {
+              if (row.status === "superseded" || row.project_id !== session.project_id) continue
+              const ageDays = Math.max(0, (now - (row.time_created ?? now)) / 86_400_000)
+              if (row.ttl_days != null && ageDays > row.ttl_days) continue
+              const cos = queryEmbedding && Array.isArray(row.embedding) ? cosine(queryEmbedding, row.embedding as number[]) : undefined
+              const decay = Math.exp(-ageDays / (row.ttl_days ?? 90))
+              const base = (cos ?? 0) * (row.trust ?? 1) * decay
+              const boost = boostTargets.get(row.id) ?? 0
+              if (base + boost > 0.3) {
+                scored.push({
+                  line: "- [" + (row.topic || row.kind || "memory") + "] " + row.claim.slice(0, 500),
+                  score: base + boost,
+                })
+              }
+            }
+          }
+        }
+      }
+
       scored.sort((a, b) => b.score - a.score)
 
       const picked: string[] = []
