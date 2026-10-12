@@ -48,5 +48,6 @@ export const migrations = (
     import("./migration/20261012213841_fix_memory_fts_triggers"),
     import("./migration/20261012220000_fix_memory_fts_rowid"),
     import("./migration/20261012221000_memory_item_fts"),
+    import("./migration/20261012230000_ensure_memory_fts"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]
