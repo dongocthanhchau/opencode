@@ -18,9 +18,13 @@ export const CvisCommand = cmd({
       .command(CvisRunStartCommand)
       .command(CvisRunStatusCommand)
       .command(CvisBindingSetCommand)
+      .command(CvisBindingStatusCommand)
       .command(CvisMessageSendCommand)
       .command(CvisMessageAckCommand)
       .command(CvisEventsCommand)
+      .command(CvisRulesetCommand)
+      .command(CvisScopeCheckCommand)
+      .command(CvisScopeResolveCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -241,5 +245,83 @@ export const CvisEventsCommand = effectCmd({
       })
       .pipe(Effect.mapError(domainError))
     UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisRulesetCommand = effectCmd({
+  command: "ruleset <role>",
+  describe: "compute the effective session ruleset for a role and task scope",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("role", { type: "string", demandOption: true })
+      .option("scope", { type: "string", describe: "task scope as JSON" })
+      .option("project-rules", { type: "string", describe: "project grant ruleset as JSON" }),
+  handler: Effect.fn("Cli.cvis.ruleset")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* svc
+      .buildRuleset({
+        role: args.role as never,
+        scope: args.scope ? (JSON.parse(args.scope as string) as never) : undefined,
+        projectRules: args["project-rules"] ? (JSON.parse(args["project-rules"] as string) as never) : undefined,
+      })
+      .pipe(Effect.mapError(domainError))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisScopeCheckCommand = effectCmd({
+  command: "scope-check",
+  describe: "validate a task scope against worktree and project denies",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("scope", { type: "string", demandOption: true, describe: "task scope as JSON" })
+      .option("worktree", { type: "string" })
+      .option("denies", { type: "string", describe: "project deny paths as JSON array" }),
+  handler: Effect.fn("Cli.cvis.scopeCheck")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* svc
+      .checkScope({
+        scope: JSON.parse(args.scope as string) as never,
+        worktree: (args.worktree as string | undefined) ?? undefined,
+        projectDenies: args.denies ? (JSON.parse(args.denies as string) as string[]) : undefined,
+      })
+      .pipe(Effect.mapError(domainError))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisScopeResolveCommand = effectCmd({
+  command: "scope-resolve",
+  describe: "resolve scope paths through symlinks and report escapes",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("worktree", { type: "string", demandOption: true })
+      .option("path", { type: "string", array: true, demandOption: true }),
+  handler: Effect.fn("Cli.cvis.scopeResolve")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* svc
+      .resolveScope({ worktree: args.worktree as string, paths: args.path as string[] })
+      .pipe(Effect.mapError(domainError))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisBindingStatusCommand = effectCmd({
+  command: "binding-status <session> <status>",
+  describe: "transition a session binding (idle/busy/paused)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("session", { type: "string", demandOption: true })
+      .positional("status", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.bindingStatus")(function* (args) {
+    const svc = yield* Orchestration.Service
+    yield* svc
+      .setBindingStatus({ sessionID: args.session as string, status: args.status as never })
+      .pipe(Effect.mapError(domainError))
+    UI.println("ok")
   }),
 })

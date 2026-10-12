@@ -3,6 +3,7 @@ import { and, eq, gt } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ProjectV2 } from "@opencode-ai/core/project"
+import { FSUtil } from "@opencode-ai/core/fs-util"
 import {
   CvisEventTable,
   CvisMessageTable,
@@ -12,6 +13,8 @@ import {
   CvisTaskTable,
 } from "@opencode-ai/core/orchestration/sql"
 import {
+  BindingStatus,
+  canTransitionBinding,
   canTransitionGoal,
   canTransitionRun,
   canTransitionTask,
@@ -20,7 +23,8 @@ import {
   RunStatus,
   TaskStatus,
 } from "./machine"
-import { Role } from "./roles"
+import { Role, checkResolvedPaths, effectiveRuleset, validateScope } from "./roles"
+import type { TaskScope } from "./roles"
 
 export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("CvisNotFound", {
   entity: Schema.String,
@@ -69,6 +73,7 @@ export interface Interface {
     taskID?: string
     managerSession?: string
   }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
+  readonly setBindingStatus: (input: { sessionID: string; status: BindingStatus }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
   readonly sendMessage: (input: {
     projectID: string
     taskID?: string
@@ -80,6 +85,20 @@ export interface Interface {
     idempotencyKey?: string
   }) => Effect.Effect<{ id: string }, InvalidTransitionError>
   readonly ackMessage: (input: { id: string }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
+  readonly buildRuleset: (input: {
+    role: Role
+    scope?: TaskScope
+    projectRules?: { permission: string; pattern: string; action: "allow" | "deny" | "ask" }[]
+  }) => Effect.Effect<{ permission: string; pattern: string; action: "allow" | "deny" | "ask" }[]>
+  readonly checkScope: (input: {
+    scope: TaskScope
+    worktree?: string
+    projectDenies?: string[]
+  }) => Effect.Effect<string[]>
+  readonly resolveScope: (input: {
+    worktree: string
+    paths: string[]
+  }) => Effect.Effect<{ resolved: { original: string; resolved: string }[]; escapes: string[] }>
   readonly listTasks: (input: { projectID: string; status?: TaskStatus }) => Effect.Effect<
     { id: string; title: string; role: string; status: string; attempt: number; goalID: string | null }[]
   >
@@ -110,6 +129,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const fs = yield* FSUtil.Service
 
     const recordEvent = Effect.fn("Cvis.recordEvent")(function* (
       tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
@@ -351,6 +371,27 @@ const layer = Layer.effect(
         const task = yield* db.select({ id: CvisTaskTable.id }).from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
         if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
       }
+      // Reuse guard: a session committed to another task can only be rebound
+      // once it is idle. Prevents task instructions leaking across work.
+      const current = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (
+        current?.task_id != null &&
+        input.taskID != null &&
+        current.task_id !== input.taskID &&
+        current.status !== "idle"
+      ) {
+        return yield* new InvalidTransitionError({
+          entity: "binding",
+          id: input.sessionID,
+          from: current.task_id,
+          to: input.taskID,
+        })
+      }
       yield* db
         .transaction((tx) =>
           Effect.gen(function* () {
@@ -379,6 +420,39 @@ const layer = Layer.effect(
               entityID: input.sessionID,
               type: "binding.updated",
               payload: { role: input.role, taskID: input.taskID ?? null },
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+    })
+
+    const setBindingStatus = Effect.fn("Cvis.setBindingStatus")(function* (input: {
+      sessionID: string
+      status: BindingStatus
+    }) {
+      const row = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ entity: "binding", id: input.sessionID })
+      if (!canTransitionBinding(row.status as BindingStatus, input.status)) {
+        return yield* new InvalidTransitionError({ entity: "binding", id: input.sessionID, from: row.status, to: input.status })
+      }
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx
+              .update(CvisSessionBindingTable)
+              .set({ status: input.status })
+              .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+              .run()
+            yield* recordEvent(tx, {
+              projectID: row.project_id,
+              entity: "binding",
+              entityID: input.sessionID,
+              type: `binding.${input.status}`,
             })
           }),
         )
@@ -452,6 +526,35 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
     })
 
+    const buildRuleset = Effect.fn("Cvis.buildRuleset")(function* (input: {
+      role: Role
+      scope?: TaskScope
+      projectRules?: { permission: string; pattern: string; action: "allow" | "deny" | "ask" }[]
+    }) {
+      return effectiveRuleset(input)
+    })
+
+    const checkScope = Effect.fn("Cvis.checkScope")(function* (input: {
+      scope: TaskScope
+      worktree?: string
+      projectDenies?: string[]
+    }) {
+      return validateScope(input.scope, { worktree: input.worktree, projectDenies: input.projectDenies })
+    })
+
+    const resolveScope = Effect.fn("Cvis.resolveScope")(function* (input: { worktree: string; paths: string[] }) {
+      const resolved: { original: string; resolved: string }[] = []
+      for (const original of input.paths) {
+        const joined = original.startsWith("/") ? original : `${input.worktree.replace(/\/+$/, "")}/${original}`
+        // FSUtil falls back to the joined path when nothing exists there yet
+        // (tasks routinely create new files); containment still applies.
+        const real = yield* fs.resolve(joined)
+        resolved.push({ original, resolved: real })
+      }
+      const checked = checkResolvedPaths(input.worktree, resolved)
+      return { resolved, escapes: checked.escapes }
+    })
+
     const listTasks = Effect.fn("Cvis.listTasks")(function* (input: { projectID: string; status?: TaskStatus }) {
       const cond =
         input.status == null
@@ -497,6 +600,10 @@ const layer = Layer.effect(
     })
 
     return Service.of({
+      buildRuleset,
+      setBindingStatus,
+      checkScope,
+      resolveScope,
       createGoal,
       setGoalStatus,
       createTask,
@@ -515,7 +622,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Database.node],
+  deps: [Database.node, FSUtil.node],
 })
 
 export * as Orchestration from "./service"
