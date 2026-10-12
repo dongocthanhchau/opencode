@@ -305,6 +305,7 @@ const layer = Layer.effect(
                   fetched_at: Date.now(),
                   hash,
                 })
+                .onConflictDoNothing()
                 .run()
             }
 
@@ -317,6 +318,7 @@ const layer = Layer.effect(
               yield* tx
                 .insert(MemorySourceTable)
                 .values({ id: sourceID, kind: "session", ref: input.sessionID, trust: 1.0 })
+                .onConflictDoNothing()
                 .run()
             }
 
@@ -332,7 +334,11 @@ const layer = Layer.effect(
                 .all()
               if (dupInside.length > 0) continue
               const newItemID = `mit_${Date.now().toString(36)}_${prepared.claimHash.slice(0, 8)}`
-              yield* tx
+              // Idempotent under concurrent writers: when another capture
+              // commits the same claim first, skip its relations/evidence
+              // instead of failing on the unique index or linking a row
+              // this transaction did not create.
+              const inserted = yield* tx
                 .insert(MemoryItemTable)
                 .values({
                   id: newItemID,
@@ -351,7 +357,10 @@ const layer = Layer.effect(
                   hash: prepared.claimHash,
                   fetched_at: Date.now(),
                 })
-                .run()
+                .onConflictDoNothing()
+                .returning({ id: MemoryItemTable.id })
+                .all()
+              if (inserted.length === 0) continue
 
               // Phase 3a: detect relations with existing items in the same project.
               if (prepared.claimEmbedding && session.project_id) {

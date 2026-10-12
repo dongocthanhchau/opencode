@@ -21,6 +21,7 @@ const FTS_LIMIT = 200
 
 export interface Interface {
   readonly recall: (input: { sessionID: SessionID }) => Effect.Effect<string | undefined>
+  readonly recallStrict: (input: { sessionID: SessionID }) => Effect.Effect<string | undefined, unknown>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/MemoryRecall") {}
@@ -289,7 +290,7 @@ const layer = Layer.effect(
     const recall = (input: { sessionID: SessionID }) =>
       inner(input).pipe(Effect.orElseSucceed(() => undefined))
 
-    return Service.of({ recall })
+    return Service.of({ recall, recallStrict: inner })
   }),
 )
 
