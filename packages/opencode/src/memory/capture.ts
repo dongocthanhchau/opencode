@@ -41,6 +41,11 @@ function gated(text: string): boolean {
 const MIN_CLAIM_LEN = 20
 const MAX_CLAIMS = 12
 
+// B5: cosine similarity alone cannot prove a new claim replaces an old one.
+// A polarity mismatch (one side negates) signals possible contradiction, so
+// we link instead of auto-superseding and leave both claims for review.
+const NEGATION = /\b(not|never|no longer|n't|deprecated|removed|instead|however|but|wrong|incorrect|obsolete|replaced|disabled)\b/i
+
 function splitClaims(text: string): string[] {
   const chunks: string[] = []
   let current: string[] = []
@@ -208,41 +213,11 @@ const layer = Layer.effect(
         ),
       )
 
-      yield* db
-        .insert(MemoryFactTable)
-        .values({
-          id: `mem_${Date.now().toString(36)}_${hash.slice(0, 8)}`,
-          session_id: input.sessionID,
-          project_id: session.project_id,
-          fact,
-          topic,
-          keywords: keywordsOf(fact),
-          embedding: embedding ?? null,
-          vault_path: vaultOk ? notePath : null,
-          kind: "fact",
-          source: "session",
-          trust: 1.0,
-          fetched_at: Date.now(),
-          hash,
-        })
-        .run()
-        .pipe(Effect.orDie)
-
-      // Phase 2: split the summary into atomic claims stored as memory items.
-      const sourceID = `msrc_${input.sessionID}`
-      const sourceRow = yield* db
-        .select({ id: MemorySourceTable.id })
-        .from(MemorySourceTable)
-        .where(eq(MemorySourceTable.id, sourceID))
-        .all()
-        .pipe(Effect.orDie)
-      if (sourceRow.length === 0) {
-        yield* db
-          .insert(MemorySourceTable)
-          .values({ id: sourceID, kind: "session", ref: input.sessionID, trust: 1.0 })
-          .run()
-          .pipe(Effect.orDie)
-      }
+      // B2: prepare everything fallible (network embeds) before the write
+      // transaction so the commit phase is a single atomic unit. A failed
+      // capture writes nothing, so a retry re-runs cleanly instead of hitting
+      // the legacy dedup early-return with items missing.
+      const preparedClaims: { claim: string; claimHash: string; claimEmbedding: number[] | undefined }[] = []
       for (const claim of splitClaims(fact)) {
         if (claim.trim().length < MIN_CLAIM_LEN) continue
         if (BANNED.some((re) => re.test(claim))) continue
@@ -270,96 +245,173 @@ const layer = Layer.effect(
           .pipe(Effect.orDie)
         if (dupItem.length > 0) continue
         const claimEmbedding = yield* embed(claim)
-        const newItemID = `mit_${Date.now().toString(36)}_${claimHash.slice(0, 8)}`
-        yield* db
-          .insert(MemoryItemTable)
-          .values({
-            id: newItemID,
-            project_id: session.project_id,
-            kind: "fact",
-            status: "active",
-            claim,
-            topic,
-            keywords: keywordsOf(claim),
-            embedding: claimEmbedding ?? null,
-            trust: 1.0,
-            version: 1,
-            source_id: sourceID,
-            session_id: input.sessionID,
-            vault_path: vaultOk ? notePath : null,
-            hash: claimHash,
-            fetched_at: Date.now(),
-          })
-          .run()
-          .pipe(Effect.orDie)
-
-        // Phase 3a: detect relations with existing items in the same project.
-        if (claimEmbedding && session.project_id) {
-          const similar = yield* db
-            .select()
-            .from(MemoryItemTable)
-            .where(
-              and(
-                eq(MemoryItemTable.project_id, session.project_id),
-                ne(MemoryItemTable.id, newItemID),
-                eq(MemoryItemTable.status, "active"),
-              ),
-            )
-            .all()
-            .pipe(Effect.orDie)
-          for (const old of similar) {
-            if (!Array.isArray(old.embedding) || (old.embedding as number[]).length === 0) continue
-            const cos = cosine(claimEmbedding, old.embedding as number[])
-            if (cos === undefined) continue
-            if (cos >= 0.90) {
-              // Near-identical claim: new supersedes old.
-              yield* db
-                .update(MemoryItemTable)
-                .set({ status: "superseded" })
-                .where(eq(MemoryItemTable.id, old.id))
-                .run()
-                .pipe(Effect.orDie)
-              yield* db
-                .insert(MemoryRelationTable)
-                .values({
-                  id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
-                  from_id: newItemID,
-                  to_id: old.id,
-                  relation: "supersedes",
-                })
-                .onConflictDoNothing()
-                .run()
-                .pipe(Effect.orDie)
-            } else if (cos >= 0.75) {
-              // Related but distinct claim.
-              yield* db
-                .insert(MemoryRelationTable)
-                .values({
-                  id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
-                  from_id: newItemID,
-                  to_id: old.id,
-                  relation: "related",
-                })
-                .onConflictDoNothing()
-                .run()
-                .pipe(Effect.orDie)
-            }
-          }
-        }
-
-        // Phase 3b: evidence provenance — link item back to the source session.
-        yield* db
-          .insert(MemoryEvidenceTable)
-          .values({
-            id: `mev_${Date.now().toString(36)}_${claimHash.slice(0, 8)}`,
-            item_id: newItemID,
-            kind: "session",
-            ref: input.sessionID,
-            content: fact.slice(0, 2000),
-          })
-          .run()
-          .pipe(Effect.orDie)
+        preparedClaims.push({ claim, claimHash, claimEmbedding })
       }
+
+      // Phase 2: split the summary into atomic claims stored as memory items.
+      const sourceID = `msrc_${input.sessionID}`
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            // Re-check inside the transaction: a concurrent or retried capture
+            // may have committed while we were preparing.
+            const factExists = yield* tx
+              .select({ id: MemoryFactTable.id })
+              .from(MemoryFactTable)
+              .where(
+                projectID == null
+                  ? and(eq(MemoryFactTable.hash, hash), isNull(MemoryFactTable.project_id))
+                  : and(eq(MemoryFactTable.hash, hash), eq(MemoryFactTable.project_id, projectID)),
+              )
+              .all()
+            if (factExists.length === 0) {
+              yield* tx
+                .insert(MemoryFactTable)
+                .values({
+                  id: `mem_${Date.now().toString(36)}_${hash.slice(0, 8)}`,
+                  session_id: input.sessionID,
+                  project_id: session.project_id,
+                  fact,
+                  topic,
+                  keywords: keywordsOf(fact),
+                  embedding: embedding ?? null,
+                  vault_path: vaultOk ? notePath : null,
+                  kind: "fact",
+                  source: "session",
+                  trust: 1.0,
+                  fetched_at: Date.now(),
+                  hash,
+                })
+                .run()
+            }
+
+            const sourceRow = yield* tx
+              .select({ id: MemorySourceTable.id })
+              .from(MemorySourceTable)
+              .where(eq(MemorySourceTable.id, sourceID))
+              .all()
+            if (sourceRow.length === 0) {
+              yield* tx
+                .insert(MemorySourceTable)
+                .values({ id: sourceID, kind: "session", ref: input.sessionID, trust: 1.0 })
+                .run()
+            }
+
+            for (const prepared of preparedClaims) {
+              const dupInside = yield* tx
+                .select({ id: MemoryItemTable.id })
+                .from(MemoryItemTable)
+                .where(
+                  projectID == null
+                    ? and(eq(MemoryItemTable.hash, prepared.claimHash), isNull(MemoryItemTable.project_id))
+                    : and(eq(MemoryItemTable.hash, prepared.claimHash), eq(MemoryItemTable.project_id, projectID)),
+                )
+                .all()
+              if (dupInside.length > 0) continue
+              const newItemID = `mit_${Date.now().toString(36)}_${prepared.claimHash.slice(0, 8)}`
+              yield* tx
+                .insert(MemoryItemTable)
+                .values({
+                  id: newItemID,
+                  project_id: session.project_id,
+                  kind: "fact",
+                  status: "active",
+                  claim: prepared.claim,
+                  topic,
+                  keywords: keywordsOf(prepared.claim),
+                  embedding: prepared.claimEmbedding ?? null,
+                  trust: 1.0,
+                  version: 1,
+                  source_id: sourceID,
+                  session_id: input.sessionID,
+                  vault_path: vaultOk ? notePath : null,
+                  hash: prepared.claimHash,
+                  fetched_at: Date.now(),
+                })
+                .run()
+
+              // Phase 3a: detect relations with existing items in the same project.
+              if (prepared.claimEmbedding && session.project_id) {
+                const similar = yield* tx
+                  .select()
+                  .from(MemoryItemTable)
+                  .where(
+                    and(
+                      eq(MemoryItemTable.project_id, session.project_id),
+                      ne(MemoryItemTable.id, newItemID),
+                      eq(MemoryItemTable.status, "active"),
+                    ),
+                  )
+                  .all()
+                for (const old of similar) {
+                  if (!Array.isArray(old.embedding) || (old.embedding as number[]).length === 0) continue
+                  const cos = cosine(prepared.claimEmbedding, old.embedding as number[])
+                  if (cos === undefined) continue
+                  if (cos >= 0.90) {
+                    const sameTopic = (old.topic ?? "") === topic
+                    const polarityMatch = NEGATION.test(prepared.claim) === NEGATION.test(old.claim)
+                    if (sameTopic && polarityMatch) {
+                      // Agreeing near-duplicate on the same topic: new supersedes old.
+                      yield* tx
+                        .update(MemoryItemTable)
+                        .set({ status: "superseded" })
+                        .where(eq(MemoryItemTable.id, old.id))
+                        .run()
+                      yield* tx
+                        .insert(MemoryRelationTable)
+                        .values({
+                          id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
+                          from_id: newItemID,
+                          to_id: old.id,
+                          relation: "supersedes",
+                        })
+                        .onConflictDoNothing()
+                        .run()
+                    } else {
+                      // Possible contradiction or topic drift: link for review,
+                      // keep both claims active instead of auto-resolving.
+                      yield* tx
+                        .insert(MemoryRelationTable)
+                        .values({
+                          id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
+                          from_id: newItemID,
+                          to_id: old.id,
+                          relation: polarityMatch ? "related" : "contradicts",
+                        })
+                        .onConflictDoNothing()
+                        .run()
+                    }
+                  } else if (cos >= 0.75) {
+                    // Related but distinct claim.
+                    yield* tx
+                      .insert(MemoryRelationTable)
+                      .values({
+                        id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
+                        from_id: newItemID,
+                        to_id: old.id,
+                        relation: "related",
+                      })
+                      .onConflictDoNothing()
+                      .run()
+                  }
+                }
+              }
+
+              // Phase 3b: evidence provenance — link item back to the source session.
+              yield* tx
+                .insert(MemoryEvidenceTable)
+                .values({
+                  id: `mev_${Date.now().toString(36)}_${prepared.claimHash.slice(0, 8)}`,
+                  item_id: newItemID,
+                  kind: "session",
+                  ref: input.sessionID,
+                  content: fact.slice(0, 2000),
+                })
+                .run()
+            }
+          }),
+        )
+        .pipe(Effect.orDie)
     })
 
     return Service.of({ capture })

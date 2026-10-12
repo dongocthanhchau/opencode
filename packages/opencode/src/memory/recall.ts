@@ -1,4 +1,4 @@
-import { desc, eq, inArray, sql } from "drizzle-orm"
+import { desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { Database as BunDatabase } from "bun:sqlite"
@@ -7,6 +7,7 @@ import {
   MemoryFactTable,
   MemoryItemTable,
   MemoryRelationTable,
+  MemoryTombstoneTable,
   MessageTable,
   PartTable,
   SessionTable,
@@ -125,7 +126,24 @@ const layer = Layer.effect(
         db.select().from(MemoryFactTable).where(inArray(MemoryFactTable.id, prefiltered)).all().pipe(Effect.orDie),
         db.select().from(MemoryItemTable).where(inArray(MemoryItemTable.id, prefiltered)).all().pipe(Effect.orDie),
       ])
+      // B3: forgotten hashes must never recall, even for legacy rows that
+      // predate the capture-time tombstone gate.
+      const tombstoned = new Set(
+        (
+          yield* db
+            .select({ hash: MemoryTombstoneTable.hash })
+            .from(MemoryTombstoneTable)
+            .where(
+              session.project_id == null
+                ? isNull(MemoryTombstoneTable.project_id)
+                : eq(MemoryTombstoneTable.project_id, session.project_id),
+            )
+            .all()
+            .pipe(Effect.orDie)
+        ).map((r) => r.hash),
+      )
       const candidates: {
+        id: string
         project_id: string | null
         topic: string
         text: string
@@ -135,19 +153,24 @@ const layer = Layer.effect(
         embedding: number[] | null
         kind: string
       }[] = [
-        ...factRows.map((row) => ({
-          project_id: row.project_id,
-          topic: row.topic ?? "",
-          text: row.fact,
-          trust: row.trust ?? 1,
-          time_created: row.time_created,
-          ttl_days: row.ttl_days,
-          embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,
-          kind: row.kind ?? "fact",
-        })),
-        ...itemRows
-          .filter((row) => row.status !== "superseded")
+        ...factRows
+          .filter((row) => !tombstoned.has(row.hash ?? ""))
           .map((row) => ({
+            id: row.id,
+            project_id: row.project_id,
+            topic: row.topic ?? "",
+            text: row.fact,
+            trust: row.trust ?? 1,
+            time_created: row.time_created,
+            ttl_days: row.ttl_days,
+            embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,
+            kind: row.kind ?? "fact",
+          })),
+        ...itemRows
+          .filter((row) => row.status !== "superseded" && row.status !== "deleted")
+          .filter((row) => !tombstoned.has(row.hash ?? ""))
+          .map((row) => ({
+            id: row.id,
             project_id: row.project_id,
             topic: row.topic ?? "",
             text: row.claim,
@@ -161,7 +184,8 @@ const layer = Layer.effect(
 
       const now = Date.now()
       const queryEmbedding = yield* embed(query)
-      const scored: { line: string; score: number }[] = []
+      const scored: { id: string; line: string; score: number }[] = []
+      const scoredIDs = new Set<string>()
       for (const row of candidates) {
         if (row.project_id !== session.project_id) continue
         const ageDays = Math.max(0, (now - (row.time_created ?? now)) / 86_400_000)
@@ -173,9 +197,11 @@ const layer = Layer.effect(
         const decay = Math.exp(-ageDays / (row.ttl_days ?? 90))
         const score = (hits * 2 + (cos ?? 0)) * (row.trust ?? 1) * decay
         scored.push({
+          id: row.id,
           line: "- [" + (row.topic || row.kind || "memory") + "] " + row.text.slice(0, 500),
           score,
         })
+        scoredIDs.add(row.id)
       }
       // Phase 3c: boost scores of items connected via relation graph (1-hop).
       if (scored.length > 0 && itemRows.length > 0) {
@@ -200,7 +226,9 @@ const layer = Layer.effect(
               .all()
               .pipe(Effect.orDie)
             for (const row of boostedRows) {
-              if (row.status === "superseded" || row.project_id !== session.project_id) continue
+              if (row.status === "superseded" || row.status === "deleted" || row.project_id !== session.project_id) continue
+              if (tombstoned.has(row.hash ?? "")) continue
+              if (scoredIDs.has(row.id)) continue
               const ageDays = Math.max(0, (now - (row.time_created ?? now)) / 86_400_000)
               if (row.ttl_days != null && ageDays > row.ttl_days) continue
               const cos = queryEmbedding && Array.isArray(row.embedding) ? cosine(queryEmbedding, row.embedding as number[]) : undefined
@@ -209,9 +237,11 @@ const layer = Layer.effect(
               const boost = boostTargets.get(row.id) ?? 0
               if (base + boost > 0.3) {
                 scored.push({
+                  id: row.id,
                   line: "- [" + (row.topic || row.kind || "memory") + "] " + row.claim.slice(0, 500),
                   score: base + boost,
                 })
+                scoredIDs.add(row.id)
               }
             }
           }

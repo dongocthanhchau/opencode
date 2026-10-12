@@ -9,7 +9,7 @@ import { UI } from "../ui"
 import { unlink } from "node:fs/promises"
 import { inArray, isNotNull } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
-import { MemoryFactTable, MemoryTombstoneTable, SessionTable } from "@opencode-ai/core/session/sql"
+import { MemoryFactTable, MemoryItemTable, MemoryTombstoneTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { cosine } from "@/memory/recall"
 
 export const MemoryCommand = cmd({
@@ -95,6 +95,8 @@ export const MemoryPruneCommand = effectCmd({
     const capped = withEmbeddings.slice(0, 500)
     for (let i = 0; i < capped.length; i++) {
       for (let j = i + 1; j < capped.length; j++) {
+        // B4: duplicates are per-project — never prune across project scopes.
+        if (capped[i].project_id !== capped[j].project_id) continue
         const cos = cosine(capped[i].embedding as number[], capped[j].embedding as number[])
         if (cos !== undefined && cos >= 0.85) {
           const older = (capped[i].time_created ?? 0) <= (capped[j].time_created ?? 0) ? capped[i] : capped[j]
@@ -125,20 +127,61 @@ export const MemoryPruneCommand = effectCmd({
     if (args.apply && remove.size > 0) {
       const ids = [...remove]
       const rows = facts.filter((f) => remove.has(f.id))
-      yield* db.delete(MemoryFactTable).where(inArray(MemoryFactTable.id, ids)).run().pipe(Effect.orDie)
-      for (const row of rows) {
-        yield* db
-          .insert(MemoryTombstoneTable)
-          .values({
-            id: `mtb_${Date.now().toString(36)}_${row.hash.slice(0, 8)}`,
-            hash: row.hash,
-            project_id: row.project_id ?? null,
-            reason: "prune-duplicate",
-          })
-          .onConflictDoNothing()
-          .run()
-          .pipe(Effect.orDie)
-      }
+      // B4: items decomposed from a pruned fact would otherwise resurrect it
+      // via recall. Remove the pruned sessions' items and tombstone their
+      // claim hashes in the same transaction as the fact delete.
+      const prunedSessionIDs = [...new Set(rows.flatMap((r) => (r.session_id ? [r.session_id] : [])))]
+      const prunedItems =
+        prunedSessionIDs.length > 0
+          ? yield* db
+              .select()
+              .from(MemoryItemTable)
+              .where(inArray(MemoryItemTable.session_id, prunedSessionIDs))
+              .all()
+              .pipe(Effect.orDie)
+          : []
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx.delete(MemoryFactTable).where(inArray(MemoryFactTable.id, ids)).run()
+            if (prunedItems.length > 0) {
+              yield* tx
+                .delete(MemoryItemTable)
+                .where(
+                  inArray(
+                    MemoryItemTable.id,
+                    prunedItems.map((i) => i.id),
+                  ),
+                )
+                .run()
+            }
+            for (const row of rows) {
+              yield* tx
+                .insert(MemoryTombstoneTable)
+                .values({
+                  id: `mtb_${Date.now().toString(36)}_${row.hash.slice(0, 8)}`,
+                  hash: row.hash,
+                  project_id: row.project_id ?? null,
+                  reason: "prune-duplicate",
+                })
+                .onConflictDoNothing()
+                .run()
+            }
+            for (const item of prunedItems) {
+              yield* tx
+                .insert(MemoryTombstoneTable)
+                .values({
+                  id: `mtb_${Date.now().toString(36)}_${item.hash.slice(0, 8)}`,
+                  hash: item.hash,
+                  project_id: item.project_id ?? null,
+                  reason: "prune-duplicate",
+                })
+                .onConflictDoNothing()
+                .run()
+            }
+          }),
+        )
+        .pipe(Effect.orDie)
       for (const row of rows) {
         if (!row.vault_path) continue
         yield* Effect.tryPromise({
@@ -146,7 +189,9 @@ export const MemoryPruneCommand = effectCmd({
           catch: () => new Error("unlink failed"),
         }).pipe(Effect.ignore)
       }
-      UI.println(UI.Style.TEXT_SUCCESS_BOLD + `Pruned ${ids.length} fact(s)` + UI.Style.TEXT_NORMAL)
+      UI.println(
+        UI.Style.TEXT_SUCCESS_BOLD + `Pruned ${ids.length} fact(s), ${prunedItems.length} item(s)` + UI.Style.TEXT_NORMAL,
+      )
     } else {
       UI.println(args.apply ? "Nothing to prune" : "Dry run: pass --apply to delete")
     }
