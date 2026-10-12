@@ -3,6 +3,7 @@ import { Effect } from "effect"
 import { cmd } from "./cmd"
 import { effectCmd } from "../effect-cmd"
 import { MemoryCapture } from "@/memory/capture"
+import { MemoryRecall } from "@/memory/recall"
 import { MemoryGraphCommand } from "./memory-graph"
 import { SessionID } from "../../session/schema"
 import { UI } from "../ui"
@@ -15,7 +16,13 @@ import { cosine } from "@/memory/recall"
 export const MemoryCommand = cmd({
   command: "memory",
   describe: "manage long-term memory",
-  builder: (yargs: Argv) => yargs.command(MemoryCaptureCommand).command(MemoryPruneCommand).command(MemoryGraphCommand).demandCommand(),
+  builder: (yargs: Argv) =>
+    yargs
+      .command(MemoryCaptureCommand)
+      .command(MemoryRecallCommand)
+      .command(MemoryPruneCommand)
+      .command(MemoryGraphCommand)
+      .demandCommand(),
   async handler() {},
 })
 
@@ -32,6 +39,21 @@ export const MemoryCaptureCommand = effectCmd({
     const svc = yield* MemoryCapture.Service
     yield* svc.capture({ sessionID: SessionID.make(args.sessionID) })
     UI.println(UI.Style.TEXT_SUCCESS_BOLD + "Memory capture done" + UI.Style.TEXT_NORMAL)
+  }),
+})
+export const MemoryRecallCommand = effectCmd({
+  command: "recall <sessionID>",
+  describe: "recall relevant memories for a session (debug/verify)",
+  builder: (yargs) =>
+    yargs.positional("sessionID", {
+      describe: "session ID to recall for",
+      type: "string",
+      demandOption: true,
+    }),
+  handler: Effect.fn("Cli.memory.recall")(function* (args) {
+    const svc = yield* MemoryRecall.Service
+    const out = yield* svc.recall({ sessionID: SessionID.make(args.sessionID) })
+    UI.println(out ?? "(no memories recalled)")
   }),
 })
 export const MemoryPruneCommand = effectCmd({

@@ -46,7 +46,26 @@ const MAX_CLAIMS = 12
 // we link instead of auto-superseding and leave both claims for review.
 const NEGATION = /\b(not|never|no longer|n't|deprecated|removed|instead|however|but|wrong|incorrect|obsolete|replaced|disabled)\b/i
 
-function splitClaims(text: string): string[] {
+export type RelationVerdict = "supersedes" | "contradicts" | "related" | "unrelated"
+
+export function classifyRelation(input: {
+  cosine: number | undefined
+  sameTopic: boolean
+  newClaim: string
+  oldClaim: string
+}): RelationVerdict {
+  const cos = input.cosine
+  if (cos === undefined) return "unrelated"
+  if (cos >= 0.9) {
+    const polarityMatch = NEGATION.test(input.newClaim) === NEGATION.test(input.oldClaim)
+    if (input.sameTopic && polarityMatch) return "supersedes"
+    return polarityMatch ? "related" : "contradicts"
+  }
+  if (cos >= 0.75) return "related"
+  return "unrelated"
+}
+
+export function splitClaims(text: string): string[] {
   const chunks: string[] = []
   let current: string[] = []
   const flush = () => {
@@ -346,50 +365,30 @@ const layer = Layer.effect(
                 for (const old of similar) {
                   if (!Array.isArray(old.embedding) || (old.embedding as number[]).length === 0) continue
                   const cos = cosine(prepared.claimEmbedding, old.embedding as number[])
-                  if (cos === undefined) continue
-                  if (cos >= 0.90) {
-                    const sameTopic = (old.topic ?? "") === topic
-                    const polarityMatch = NEGATION.test(prepared.claim) === NEGATION.test(old.claim)
-                    if (sameTopic && polarityMatch) {
-                      // Agreeing near-duplicate on the same topic: new supersedes old.
-                      yield* tx
-                        .update(MemoryItemTable)
-                        .set({ status: "superseded" })
-                        .where(eq(MemoryItemTable.id, old.id))
-                        .run()
-                      yield* tx
-                        .insert(MemoryRelationTable)
-                        .values({
-                          id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
-                          from_id: newItemID,
-                          to_id: old.id,
-                          relation: "supersedes",
-                        })
-                        .onConflictDoNothing()
-                        .run()
-                    } else {
-                      // Possible contradiction or topic drift: link for review,
-                      // keep both claims active instead of auto-resolving.
-                      yield* tx
-                        .insert(MemoryRelationTable)
-                        .values({
-                          id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
-                          from_id: newItemID,
-                          to_id: old.id,
-                          relation: polarityMatch ? "related" : "contradicts",
-                        })
-                        .onConflictDoNothing()
-                        .run()
-                    }
-                  } else if (cos >= 0.75) {
-                    // Related but distinct claim.
+                  const verdict = classifyRelation({
+                    cosine: cos,
+                    sameTopic: (old.topic ?? "") === topic,
+                    newClaim: prepared.claim,
+                    oldClaim: old.claim,
+                  })
+                  if (verdict === "supersedes") {
+                    // Agreeing near-duplicate on the same topic: new supersedes old.
+                    yield* tx
+                      .update(MemoryItemTable)
+                      .set({ status: "superseded" })
+                      .where(eq(MemoryItemTable.id, old.id))
+                      .run()
+                  }
+                  if (verdict !== "unrelated") {
+                    // Contradictions and drift link for review; both claims
+                    // stay active instead of auto-resolving.
                     yield* tx
                       .insert(MemoryRelationTable)
                       .values({
                         id: `mrel_${Date.now().toString(36)}_${old.id.slice(-6)}_${newItemID.slice(-6)}`,
                         from_id: newItemID,
                         to_id: old.id,
-                        relation: "related",
+                        relation: verdict,
                       })
                       .onConflictDoNothing()
                       .run()
