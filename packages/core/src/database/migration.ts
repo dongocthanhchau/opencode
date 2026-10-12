@@ -30,28 +30,28 @@ export function apply(db: Database) {
           // outside the drizzle schema), so fresh DBs would otherwise skip
           // them entirely. Create them here to match migrated DBs.
           yield* tx.run(
-            sql`CREATE VIRTUAL TABLE IF NOT EXISTS "memory_fact_fts" USING fts5("id" UNINDEXED, "fact", "topic")`,
+            sql`CREATE VIRTUAL TABLE IF NOT EXISTS "memory_fact_fts" USING fts5("id" UNINDEXED, "fact", "topic", "project_id" UNINDEXED)`,
           )
           yield* tx.run(
-            sql`CREATE VIRTUAL TABLE IF NOT EXISTS "memory_item_fts" USING fts5("id" UNINDEXED, "fact", "topic")`,
+            sql`CREATE VIRTUAL TABLE IF NOT EXISTS "memory_item_fts" USING fts5("id" UNINDEXED, "fact", "topic", "project_id" UNINDEXED)`,
           )
           yield* tx.run(
-            sql`CREATE TRIGGER IF NOT EXISTS "memory_fact_fts_insert" AFTER INSERT ON "memory_fact" BEGIN INSERT INTO "memory_fact_fts"(rowid, "id", "fact", "topic") VALUES (new.rowid, new."id", new."fact", new."topic"); END`,
+            sql`CREATE TRIGGER IF NOT EXISTS "memory_fact_fts_insert" AFTER INSERT ON "memory_fact" BEGIN INSERT INTO "memory_fact_fts"(rowid, "id", "fact", "topic", "project_id") VALUES (new.rowid, new."id", new."fact", new."topic", new."project_id"); END`,
           )
           yield* tx.run(
             sql`CREATE TRIGGER IF NOT EXISTS "memory_fact_fts_delete" AFTER DELETE ON "memory_fact" BEGIN DELETE FROM "memory_fact_fts" WHERE rowid = old.rowid; END`,
           )
           yield* tx.run(
-            sql`CREATE TRIGGER IF NOT EXISTS "memory_fact_fts_update" AFTER UPDATE ON "memory_fact" BEGIN DELETE FROM "memory_fact_fts" WHERE rowid = old.rowid; INSERT INTO "memory_fact_fts"(rowid, "id", "fact", "topic") VALUES (new.rowid, new."id", new."fact", new."topic"); END`,
+            sql`CREATE TRIGGER IF NOT EXISTS "memory_fact_fts_update" AFTER UPDATE ON "memory_fact" BEGIN DELETE FROM "memory_fact_fts" WHERE rowid = old.rowid; INSERT INTO "memory_fact_fts"(rowid, "id", "fact", "topic", "project_id") VALUES (new.rowid, new."id", new."fact", new."topic", new."project_id"); END`,
           )
           yield* tx.run(
-            sql`CREATE TRIGGER IF NOT EXISTS "memory_item_fts_insert" AFTER INSERT ON "memory_item" BEGIN INSERT INTO "memory_item_fts"(rowid, "id", "fact", "topic") VALUES (new.rowid, new."id", new."claim", new."topic"); END`,
+            sql`CREATE TRIGGER IF NOT EXISTS "memory_item_fts_insert" AFTER INSERT ON "memory_item" BEGIN INSERT INTO "memory_item_fts"(rowid, "id", "fact", "topic", "project_id") VALUES (new.rowid, new."id", new."claim", new."topic", new."project_id"); END`,
           )
           yield* tx.run(
             sql`CREATE TRIGGER IF NOT EXISTS "memory_item_fts_delete" AFTER DELETE ON "memory_item" BEGIN DELETE FROM "memory_item_fts" WHERE rowid = old.rowid; END`,
           )
           yield* tx.run(
-            sql`CREATE TRIGGER IF NOT EXISTS "memory_item_fts_update" AFTER UPDATE ON "memory_item" BEGIN DELETE FROM "memory_item_fts" WHERE rowid = old.rowid; INSERT INTO "memory_item_fts"(rowid, "id", "fact", "topic") VALUES (new.rowid, new."id", new."claim", new."topic"); END`,
+            sql`CREATE TRIGGER IF NOT EXISTS "memory_item_fts_update" AFTER UPDATE ON "memory_item" BEGIN DELETE FROM "memory_item_fts" WHERE rowid = old.rowid; INSERT INTO "memory_item_fts"(rowid, "id", "fact", "topic", "project_id") VALUES (new.rowid, new."id", new."claim", new."topic", new."project_id"); END`,
           )
           yield* tx.run(
             sql`CREATE TABLE ${sql.identifier("migration")} (id TEXT PRIMARY KEY, time_completed INTEGER NOT NULL)`,

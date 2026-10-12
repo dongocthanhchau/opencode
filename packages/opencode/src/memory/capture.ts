@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import os from "node:os"
 import path from "node:path"
+import { unlink } from "node:fs/promises"
 import { and, asc, eq, isNull, ne } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
@@ -44,7 +45,11 @@ const MAX_CLAIMS = 12
 // B5: cosine similarity alone cannot prove a new claim replaces an old one.
 // A polarity mismatch (one side negates) signals possible contradiction, so
 // we link instead of auto-superseding and leave both claims for review.
-const NEGATION = /\b(not|never|no longer|n't|deprecated|removed|instead|however|but|wrong|incorrect|obsolete|replaced|disabled)\b/i
+const NEGATION = /\b(not|never|no longer|deprecated|removed|instead|however|but|wrong|incorrect|obsolete|replaced|disabled|không|chưa|chẳng|chả|đừng|chớ|cấm)\b|n't\b/iu
+
+export function polarityMatch(a: string, b: string): boolean {
+  return NEGATION.test(a) === NEGATION.test(b)
+}
 
 export type RelationVerdict = "supersedes" | "contradicts" | "related" | "unrelated"
 
@@ -57,9 +62,9 @@ export function classifyRelation(input: {
   const cos = input.cosine
   if (cos === undefined) return "unrelated"
   if (cos >= 0.9) {
-    const polarityMatch = NEGATION.test(input.newClaim) === NEGATION.test(input.oldClaim)
-    if (input.sameTopic && polarityMatch) return "supersedes"
-    return polarityMatch ? "related" : "contradicts"
+    const polarity = polarityMatch(input.newClaim, input.oldClaim)
+    if (input.sameTopic && polarity) return "supersedes"
+    return polarity ? "related" : "contradicts"
   }
   if (cos >= 0.75) return "related"
   return "unrelated"
@@ -86,7 +91,7 @@ export function splitClaims(text: string): string[] {
 
 export function keywordsOf(text: string): string[] {
   const seen = new Set<string>()
-  for (const word of text.toLowerCase().split(/[^a-z0-9-_]+/)) {
+  for (const word of text.toLowerCase().split(/[^\p{L}\p{N}_-]+/u)) {
     if (word.length > 3 && !seen.has(word)) seen.add(word)
     if (seen.size >= 8) break
   }
@@ -169,18 +174,9 @@ const layer = Layer.effect(
       const hash = createHash("sha256").update(fact).digest("hex")
       // Dedup is scoped per project: identical facts may coexist in different projects.
       const projectID = session.project_id
-      const existing = yield* db
-        .select({ id: MemoryFactTable.id })
-        .from(MemoryFactTable)
-        .where(
-          projectID == null
-            ? and(eq(MemoryFactTable.hash, hash), isNull(MemoryFactTable.project_id))
-            : and(eq(MemoryFactTable.hash, hash), eq(MemoryFactTable.project_id, projectID)),
-        )
-        .all()
-        .pipe(Effect.orDie)
-      if (existing.length > 0) return
-
+      // No early return when the fact already exists: a previous capture may
+      // have committed the fact but stopped before the items, so keep going
+      // and let the write transaction backfill what is missing.
       const forgotten = yield* db
         .select({ id: MemoryTombstoneTable.id })
         .from(MemoryTombstoneTable)
@@ -237,6 +233,7 @@ const layer = Layer.effect(
       // capture writes nothing, so a retry re-runs cleanly instead of hitting
       // the legacy dedup early-return with items missing.
       const preparedClaims: { claim: string; claimHash: string; claimEmbedding: number[] | undefined }[] = []
+      const embeddingRepairs: { id: string; embedding: number[] }[] = []
       for (const claim of splitClaims(fact)) {
         if (claim.trim().length < MIN_CLAIM_LEN) continue
         if (BANNED.some((re) => re.test(claim))) continue
@@ -253,7 +250,7 @@ const layer = Layer.effect(
           .pipe(Effect.orDie)
         if (claimTombstoned.length > 0) continue
         const dupItem = yield* db
-          .select({ id: MemoryItemTable.id })
+          .select({ id: MemoryItemTable.id, embedding: MemoryItemTable.embedding })
           .from(MemoryItemTable)
           .where(
             projectID == null
@@ -262,14 +259,21 @@ const layer = Layer.effect(
           )
           .all()
           .pipe(Effect.orDie)
-        if (dupItem.length > 0) continue
+        if (dupItem.length > 0) {
+          // Backfill the embedding once the provider is reachable again.
+          if (!Array.isArray(dupItem[0].embedding) || (dupItem[0].embedding as number[]).length === 0) {
+            const repairEmbedding = yield* embed(claim)
+            if (repairEmbedding) embeddingRepairs.push({ id: dupItem[0].id, embedding: repairEmbedding })
+          }
+          continue
+        }
         const claimEmbedding = yield* embed(claim)
         preparedClaims.push({ claim, claimHash, claimEmbedding })
       }
 
       // Phase 2: split the summary into atomic claims stored as memory items.
       const sourceID = `msrc_${input.sessionID}`
-      yield* db
+      const commit = yield* db
         .transaction((tx) =>
           Effect.gen(function* () {
             // Re-check inside the transaction: a concurrent or retried capture
@@ -408,9 +412,28 @@ const layer = Layer.effect(
                 })
                 .run()
             }
+
+            for (const repair of embeddingRepairs) {
+              yield* tx
+                .update(MemoryItemTable)
+                .set({ embedding: repair.embedding })
+                .where(eq(MemoryItemTable.id, repair.id))
+                .run()
+            }
           }),
         )
-        .pipe(Effect.orDie)
+        .pipe(Effect.exit)
+      if (commit._tag === "Failure") {
+        // Compensate the pre-transaction vault note: without this a failed
+        // capture would publish a note for rows that were rolled back.
+        if (vaultOk) {
+          yield* Effect.tryPromise({
+            try: () => unlink(notePath),
+            catch: () => new Error("vault compensation failed"),
+          }).pipe(Effect.ignore)
+        }
+        return yield* Effect.failCause(commit.cause).pipe(Effect.orDie)
+      }
     })
 
     return Service.of({ capture })

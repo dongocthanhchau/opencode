@@ -2,7 +2,7 @@ import type { Argv } from "yargs"
 import { Effect } from "effect"
 import { cmd } from "./cmd"
 import { effectCmd } from "../effect-cmd"
-import { MemoryCapture } from "@/memory/capture"
+import { MemoryCapture, classifyRelation } from "@/memory/capture"
 import { MemoryRecall } from "@/memory/recall"
 import { MemoryGraphCommand } from "./memory-graph"
 import { SessionID } from "../../session/schema"
@@ -114,16 +114,30 @@ export const MemoryPruneCommand = effectCmd({
 
     const withEmbeddings = facts.filter((f) => Array.isArray(f.embedding) && (f.embedding as number[]).length > 0)
     const nearDupes = new Set<string>()
+    const conflicts: [string, string][] = []
     const capped = withEmbeddings.slice(0, 500)
     for (let i = 0; i < capped.length; i++) {
       for (let j = i + 1; j < capped.length; j++) {
         // B4: duplicates are per-project — never prune across project scopes.
         if (capped[i].project_id !== capped[j].project_id) continue
         const cos = cosine(capped[i].embedding as number[], capped[j].embedding as number[])
-        if (cos !== undefined && cos >= 0.85) {
-          const older = (capped[i].time_created ?? 0) <= (capped[j].time_created ?? 0) ? capped[i] : capped[j]
-          nearDupes.add(older.id)
+        if (cos === undefined || cos < 0.85) continue
+        const older = (capped[i].time_created ?? 0) <= (capped[j].time_created ?? 0) ? capped[i] : capped[j]
+        const newer = older === capped[i] ? capped[j] : capped[i]
+        // Cosine alone cannot tell an update from a contradiction: only prune
+        // when the newer fact plausibly replaces the older one, never when
+        // their polarity disagrees.
+        const verdict = classifyRelation({
+          cosine: cos,
+          sameTopic: (older.topic ?? "") === (newer.topic ?? ""),
+          newClaim: newer.fact,
+          oldClaim: older.fact,
+        })
+        if (verdict === "contradicts") {
+          conflicts.push([newer.id, older.id])
+          continue
         }
+        nearDupes.add(older.id)
       }
     }
 
@@ -141,19 +155,20 @@ export const MemoryPruneCommand = effectCmd({
       .map((f) => f.id)
 
     const remove = new Set([...dupes, ...nearDupes])
-    UI.println(`facts: ${facts.length}  dupes: ${dupes.length}  near-dupes: ${nearDupes.size}  verbose: ${verbose.length}  stale: ${stale.length}`)
+    UI.println(`facts: ${facts.length}  dupes: ${dupes.length}  near-dupes: ${nearDupes.size}  conflicts: ${conflicts.length}  verbose: ${verbose.length}  stale: ${stale.length}`)
     for (const id of remove) UI.println(`  prune ${id}`)
+    for (const [a, b] of conflicts) UI.println(`  conflict ${a} <-> ${b} (review, not pruned)`)
     for (const id of verbose) UI.println(`  verbose ${id}`)
     for (const id of stale) UI.println(`  stale ${id}`)
 
     if (args.apply && remove.size > 0) {
       const ids = [...remove]
       const rows = facts.filter((f) => remove.has(f.id))
-      // B4: items decomposed from a pruned fact would otherwise resurrect it
-      // via recall. Remove the pruned sessions' items and tombstone their
-      // claim hashes in the same transaction as the fact delete.
+      // Items decomposed from a pruned fact would otherwise resurrect it
+      // via recall. Remove only the items whose claim came from the pruned
+      // fact text — never unrelated items that merely share the session.
       const prunedSessionIDs = [...new Set(rows.flatMap((r) => (r.session_id ? [r.session_id] : [])))]
-      const prunedItems =
+      const sessionItems =
         prunedSessionIDs.length > 0
           ? yield* db
               .select()
@@ -162,6 +177,9 @@ export const MemoryPruneCommand = effectCmd({
               .all()
               .pipe(Effect.orDie)
           : []
+      const prunedItems = sessionItems.filter((item) =>
+        rows.some((row) => row.session_id != null && row.session_id === item.session_id && row.fact.includes(item.claim)),
+      )
       yield* db
         .transaction((tx) =>
           Effect.gen(function* () {

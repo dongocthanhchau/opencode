@@ -12,7 +12,6 @@ import {
   PartTable,
   SessionTable,
 } from "@opencode-ai/core/session/sql"
-import { MemoryFactFtsTable } from "@opencode-ai/core/session/fts"
 import { SessionID } from "../session/schema"
 import { embed, keywordsOf } from "./capture"
 
@@ -41,7 +40,7 @@ export function cosine(a: number[], b: number[]): number | undefined {
 }
 
 function ftsEscape(word: string): string {
-  return word.replace(/[^a-z0-9-_]/gi, "").slice(0, 40)
+  return word.replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 40)
 }
 
 const layer = Layer.effect(
@@ -109,13 +108,28 @@ const layer = Layer.effect(
           try: () => {
             const raw = new BunDatabase(Database.path(), { readonly: true })
             try {
-              return raw.query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? LIMIT 200`).all(ftsQuery) as { id: string }[]
+              if (session.project_id == null) {
+                return raw
+                  .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" IS NULL LIMIT 200`)
+                  .all(ftsQuery) as { id: string }[]
+              }
+              return raw
+                .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" = ? LIMIT 200`)
+                .all(ftsQuery, session.project_id) as { id: string }[]
             } finally {
               raw.close()
             }
           },
-          catch: () => new Error("fts failed"),
-        }).pipe(Effect.orElseSucceed(() => [] as { id: string }[]))
+          catch: (cause) => new Error("fts failed: " + String(cause)),
+        }).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("memory FTS prefilter failed, recall continues with no candidates", {
+              table,
+              error: cause instanceof Error ? cause.message : String(cause),
+            }),
+          ),
+          Effect.orElseSucceed(() => [] as { id: string }[]),
+        )
       const [factHits, itemHits] = yield* Effect.all([searchFts("memory_fact_fts"), searchFts("memory_item_fts")], {
         concurrency: 2,
       })
@@ -142,6 +156,19 @@ const layer = Layer.effect(
             .pipe(Effect.orDie)
         ).map((r) => r.hash),
       )
+      // A legacy whole-session fact must not resurrect a claim that was
+      // later superseded, deleted, or tombstoned: if any retired item from
+      // the same session contributed text to the fact, the fact stays out.
+      const retiredClaims = (
+        yield* db
+          .select({ session_id: MemoryItemTable.session_id, claim: MemoryItemTable.claim })
+          .from(MemoryItemTable)
+          .where(inArray(MemoryItemTable.status, ["superseded", "deleted"]))
+          .all()
+          .pipe(Effect.orDie)
+      ).filter((r) => r.session_id != null)
+      const shadowed = (sessionID: string | null, fact: string) =>
+        sessionID != null && retiredClaims.some((r) => r.session_id === sessionID && fact.includes(r.claim))
       const candidates: {
         id: string
         project_id: string | null
@@ -155,6 +182,7 @@ const layer = Layer.effect(
       }[] = [
         ...factRows
           .filter((row) => !tombstoned.has(row.hash ?? ""))
+          .filter((row) => !shadowed(row.session_id, row.fact))
           .map((row) => ({
             id: row.id,
             project_id: row.project_id,

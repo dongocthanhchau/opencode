@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { classifyRelation, splitClaims } from "../../src/memory/capture"
+import { classifyRelation, keywordsOf, polarityMatch, splitClaims } from "../../src/memory/capture"
 
 describe("classifyRelation", () => {
   test("undefined cosine is unrelated", () => {
@@ -48,6 +48,27 @@ describe("classifyRelation", () => {
       }),
     ).toBe("contradicts")
   })
+  test("english contractions count as negation", () => {
+    expect(
+      classifyRelation({
+        cosine: 0.95,
+        sameTopic: true,
+        newClaim: "The proxy isn't enabled for all client requests.",
+        oldClaim: "The proxy is enabled for all client requests.",
+      }),
+    ).toBe("contradicts")
+  })
+  test("vietnamese negation blocks auto-supersede", () => {
+    expect(polarityMatch("Proxy không hoạt động.", "Proxy đang hoạt động.")).toBe(false)
+    expect(
+      classifyRelation({
+        cosine: 0.95,
+        sameTopic: true,
+        newClaim: "Proxy không hoạt động.",
+        oldClaim: "Proxy đang hoạt động.",
+      }),
+    ).toBe("contradicts")
+  })
   test("matching negation on both sides still supersedes", () => {
     expect(
       classifyRelation({
@@ -73,5 +94,11 @@ describe("splitClaims", () => {
   test("caps the number of claims", () => {
     const text = Array.from({ length: 20 }, (_, i) => `- Claim number ${i} with enough padding words here`).join("\n")
     expect(splitClaims(text).length).toBe(12)
+  })
+})
+
+describe("keywordsOf", () => {
+  test("keeps vietnamese words", () => {
+    expect(keywordsOf("điện trở có giá trị 220 ôm")).toContain("điện")
   })
 })
