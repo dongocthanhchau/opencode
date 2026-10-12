@@ -44,7 +44,8 @@ function pagerCmd(): string[] {
 export const SessionCommand = cmd({
   command: "session",
   describe: "manage sessions",
-  builder: (yargs: Argv) => yargs.command(SessionListCommand).command(SessionDeleteCommand).demandCommand(),
+  builder: (yargs: Argv) =>
+    yargs.command(SessionListCommand).command(SessionDeleteCommand).command(SessionArchiveCommand).demandCommand(),
   async handler() {},
 })
 
@@ -114,6 +115,65 @@ export const SessionListCommand = effectCmd({
     }
   }),
 })
+
+export const SessionArchiveCommand = effectCmd({
+  command: "archive",
+  describe: "archive idle sessions older than a cutoff",
+  builder: (yargs) =>
+    yargs
+      .option("older-than", {
+        describe: "archive sessions idle longer than this (e.g. 30m, 12h, 7d)",
+        type: "string",
+        default: "7d",
+      })
+      .option("directory-prefix", {
+        describe: "only archive sessions under this directory prefix",
+        type: "string",
+      })
+      .option("dry-run", {
+        describe: "print what would be archived without changing anything",
+        type: "boolean",
+        default: false,
+      }),
+  handler: Effect.fn("Cli.session.archive")(function* (args) {
+    const svc = yield* Session.Service
+    const cutoff = Date.now() - parseDuration(args.olderThan)
+    let cursor: number | undefined = undefined
+    let scanned = 0
+    let archived = 0
+    for (;;) {
+      const batch = yield* svc.listGlobal({ cursor, roots: true, limit: 500 })
+      if (batch.length === 0) break
+      for (const session of batch) {
+        scanned++
+        if (session.time.updated >= cutoff) continue
+        if (args.directoryPrefix && !session.directory.startsWith(args.directoryPrefix)) continue
+        if (args.dryRun) {
+          UI.println(`would archive ${session.id}  ${session.directory}`)
+        } else {
+          yield* svc.setArchived({ sessionID: session.id, time: Date.now() })
+        }
+        archived++
+      }
+      cursor = Math.min(...batch.map((s) => s.time.updated))
+      if (batch.length < 500) break
+    }
+    UI.println(
+      UI.Style.TEXT_SUCCESS_BOLD +
+        `${args.dryRun ? "Would archive" : "Archived"} ${archived} session(s) (scanned ${scanned})` +
+        UI.Style.TEXT_NORMAL,
+    )
+  }),
+})
+
+function parseDuration(raw: string): number {
+  const match = /^(\d+)(ms|s|m|h|d)?$/.exec(raw.trim())
+  if (!match) throw new Error(`Invalid duration: ${raw} (use e.g. 30m, 12h, 7d)`)
+  const value = parseInt(match[1], 10)
+  const unit = match[2] ?? "ms"
+  const factor: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }
+  return value * factor[unit]
+}
 
 function formatSessionTable(sessions: Session.Info[]): string {
   const lines: string[] = []
