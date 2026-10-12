@@ -3,7 +3,13 @@ import { Context, Effect, Layer } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { Database as BunDatabase } from "bun:sqlite"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { MemoryFactTable, MessageTable, PartTable, SessionTable } from "@opencode-ai/core/session/sql"
+import {
+  MemoryFactTable,
+  MemoryItemTable,
+  MessageTable,
+  PartTable,
+  SessionTable,
+} from "@opencode-ai/core/session/sql"
 import { MemoryFactFtsTable } from "@opencode-ai/core/session/fts"
 import { SessionID } from "../session/schema"
 import { embed, keywordsOf } from "./capture"
@@ -84,7 +90,7 @@ const layer = Layer.effect(
             continue
           }
         }
-        query = texts.join("?n").slice(0, 2000)
+        query = texts.join("\n").slice(0, 2000)
         if (query.trim().length > 0) break
       }
       if (query.trim().length === 0) return undefined
@@ -96,26 +102,61 @@ const layer = Layer.effect(
       if (keywords.length === 0) return undefined
 
       const ftsQuery = keywords.map((kw) => '"'+kw+'"').join(" OR ")
-      const ftsRows = yield* Effect.try({
-        try: () => {
-          const raw = new BunDatabase(Database.path(), { readonly: true })
-          try {
-            return raw.query('SELECT "id" FROM "memory_fact_fts" WHERE "memory_fact_fts" MATCH ? LIMIT 200').all(ftsQuery) as { id: string }[]
-          } finally {
-            raw.close()
-          }
-        },
-        catch: () => new Error('fts failed'),
-      }).pipe(Effect.orElseSucceed(() => [] as { id: string }[]))
-      const prefiltered = [...new Set(ftsRows.map((r) => (r as unknown as { id: string }).id))]
+      const searchFts = (table: string) =>
+        Effect.try({
+          try: () => {
+            const raw = new BunDatabase(Database.path(), { readonly: true })
+            try {
+              return raw.query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? LIMIT 200`).all(ftsQuery) as { id: string }[]
+            } finally {
+              raw.close()
+            }
+          },
+          catch: () => new Error("fts failed"),
+        }).pipe(Effect.orElseSucceed(() => [] as { id: string }[]))
+      const [factHits, itemHits] = yield* Effect.all([searchFts("memory_fact_fts"), searchFts("memory_item_fts")], {
+        concurrency: 2,
+      })
+      const prefiltered = [...new Set([...factHits, ...itemHits].map((r) => (r as unknown as { id: string }).id))]
       if (prefiltered.length === 0) return undefined
 
-      const candidates = yield* db
-        .select()
-        .from(MemoryFactTable)
-        .where(inArray(MemoryFactTable.id, prefiltered))
-        .all()
-        .pipe(Effect.orDie)
+      const [factRows, itemRows] = yield* Effect.all([
+        db.select().from(MemoryFactTable).where(inArray(MemoryFactTable.id, prefiltered)).all().pipe(Effect.orDie),
+        db.select().from(MemoryItemTable).where(inArray(MemoryItemTable.id, prefiltered)).all().pipe(Effect.orDie),
+      ])
+      const candidates: {
+        project_id: string | null
+        topic: string
+        text: string
+        trust: number
+        time_created: number | null
+        ttl_days: number | null
+        embedding: number[] | null
+        kind: string
+      }[] = [
+        ...factRows.map((row) => ({
+          project_id: row.project_id,
+          topic: row.topic ?? "",
+          text: row.fact,
+          trust: row.trust ?? 1,
+          time_created: row.time_created,
+          ttl_days: row.ttl_days,
+          embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,
+          kind: row.kind ?? "fact",
+        })),
+        ...itemRows
+          .filter((row) => row.status !== "superseded")
+          .map((row) => ({
+            project_id: row.project_id,
+            topic: row.topic ?? "",
+            text: row.claim,
+            trust: row.trust ?? 1,
+            time_created: row.time_created,
+            ttl_days: row.ttl_days,
+            embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,
+            kind: row.kind ?? "fact",
+          })),
+      ]
 
       const now = Date.now()
       const queryEmbedding = yield* embed(query)
@@ -124,15 +165,14 @@ const layer = Layer.effect(
         if (row.project_id !== session.project_id) continue
         const ageDays = Math.max(0, (now - (row.time_created ?? now)) / 86_400_000)
         if (row.ttl_days != null && ageDays > row.ttl_days) continue
-        const haystack = ((row.topic ?? "") + "?n" + row.fact).toLowerCase()
+        const haystack = (row.topic + "\n" + row.text).toLowerCase()
         const hits = keywords.filter((kw) => haystack.includes(kw.toLowerCase())).length
-        const cos =
-          queryEmbedding && Array.isArray(row.embedding) ? cosine(queryEmbedding, row.embedding as number[]) : undefined
+        const cos = queryEmbedding && row.embedding ? cosine(queryEmbedding, row.embedding) : undefined
         if (hits === 0 && (cos === undefined || cos <= 0.6)) continue
         const decay = Math.exp(-ageDays / (row.ttl_days ?? 90))
         const score = (hits * 2 + (cos ?? 0)) * (row.trust ?? 1) * decay
         scored.push({
-          line: "- [" + (row.topic || row.kind || "memory") + "] " + row.fact.slice(0, 500),
+          line: "- [" + (row.topic || row.kind || "memory") + "] " + row.text.slice(0, 500),
           score,
         })
       }
@@ -148,7 +188,7 @@ const layer = Layer.effect(
       }
       if (picked.length === 0) return undefined
       yield* Effect.logInfo("memory recalled", { count: picked.length })
-      return "Related memories:?n" + picked.join("?n")
+      return "Related memories:\n" + picked.join("\n")
     })
 
     const recall = (input: { sessionID: SessionID }) =>

@@ -5,7 +5,15 @@ import { and, asc, eq, isNull } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
-import { MemoryFactTable, MessageTable, PartTable, SessionTable } from "@opencode-ai/core/session/sql"
+import {
+  MemoryFactTable,
+  MemoryItemTable,
+  MemorySourceTable,
+  MemoryTombstoneTable,
+  MessageTable,
+  PartTable,
+  SessionTable,
+} from "@opencode-ai/core/session/sql"
 import { Filesystem } from "@/util/filesystem"
 import { SessionID } from "../session/schema"
 
@@ -25,6 +33,28 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/Me
 function gated(text: string): boolean {
   if (text.trim().length < MIN_FACT_LEN) return false
   return !BANNED.some((re) => re.test(text))
+}
+
+const MIN_CLAIM_LEN = 20
+const MAX_CLAIMS = 12
+
+function splitClaims(text: string): string[] {
+  const chunks: string[] = []
+  let current: string[] = []
+  const flush = () => {
+    const chunk = current.join("\n").trim()
+    current = []
+    if (chunk.length === 0) return
+    if (chunk.length >= MIN_CLAIM_LEN) chunks.push(chunk)
+    else if (chunks.length > 0) chunks[chunks.length - 1] += "\n" + chunk
+    else chunks.push(chunk)
+  }
+  for (const line of text.split("\n")) {
+    if (/^(#{1,4}\s+|[-*]\s+|\d+\.\s+)/.test(line) && current.join("\n").trim().length >= MIN_CLAIM_LEN) flush()
+    current.push(line)
+  }
+  flush()
+  return chunks.slice(0, MAX_CLAIMS)
 }
 
 export function keywordsOf(text: string): string[] {
@@ -124,6 +154,18 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       if (existing.length > 0) return
 
+      const forgotten = yield* db
+        .select({ id: MemoryTombstoneTable.id })
+        .from(MemoryTombstoneTable)
+        .where(
+          projectID == null
+            ? and(eq(MemoryTombstoneTable.hash, hash), isNull(MemoryTombstoneTable.project_id))
+            : and(eq(MemoryTombstoneTable.hash, hash), eq(MemoryTombstoneTable.project_id, projectID)),
+        )
+        .all()
+        .pipe(Effect.orDie)
+      if (forgotten.length > 0) return
+
       const embedding = yield* embed(fact)
       const project = path.basename(session.directory).replace(/[^a-z0-9-_]/gi, "-").slice(0, 60) || "global"
       const day = new Date().toISOString().slice(0, 10).replaceAll("-", "")
@@ -182,6 +224,71 @@ const layer = Layer.effect(
         })
         .run()
         .pipe(Effect.orDie)
+
+      // Phase 2: split the summary into atomic claims stored as memory items.
+      const sourceID = `msrc_${input.sessionID}`
+      const sourceRow = yield* db
+        .select({ id: MemorySourceTable.id })
+        .from(MemorySourceTable)
+        .where(eq(MemorySourceTable.id, sourceID))
+        .all()
+        .pipe(Effect.orDie)
+      if (sourceRow.length === 0) {
+        yield* db
+          .insert(MemorySourceTable)
+          .values({ id: sourceID, kind: "session", ref: input.sessionID, trust: 1.0 })
+          .run()
+          .pipe(Effect.orDie)
+      }
+      for (const claim of splitClaims(fact)) {
+        if (claim.trim().length < MIN_CLAIM_LEN) continue
+        if (BANNED.some((re) => re.test(claim))) continue
+        const claimHash = createHash("sha256").update(`${session.project_id}\n${claim}`).digest("hex")
+        const claimTombstoned = yield* db
+          .select({ id: MemoryTombstoneTable.id })
+          .from(MemoryTombstoneTable)
+          .where(
+            projectID == null
+              ? and(eq(MemoryTombstoneTable.hash, claimHash), isNull(MemoryTombstoneTable.project_id))
+              : and(eq(MemoryTombstoneTable.hash, claimHash), eq(MemoryTombstoneTable.project_id, projectID)),
+          )
+          .all()
+          .pipe(Effect.orDie)
+        if (claimTombstoned.length > 0) continue
+        const dupItem = yield* db
+          .select({ id: MemoryItemTable.id })
+          .from(MemoryItemTable)
+          .where(
+            projectID == null
+              ? and(eq(MemoryItemTable.hash, claimHash), isNull(MemoryItemTable.project_id))
+              : and(eq(MemoryItemTable.hash, claimHash), eq(MemoryItemTable.project_id, projectID)),
+          )
+          .all()
+          .pipe(Effect.orDie)
+        if (dupItem.length > 0) continue
+        const claimEmbedding = yield* embed(claim)
+        yield* db
+          .insert(MemoryItemTable)
+          .values({
+            id: `mit_${Date.now().toString(36)}_${claimHash.slice(0, 8)}`,
+            project_id: session.project_id,
+            kind: "fact",
+            status: "active",
+            claim,
+            topic,
+            keywords: keywordsOf(claim),
+            embedding: claimEmbedding ?? null,
+            trust: 1.0,
+            version: 1,
+            source_id: sourceID,
+            session_id: input.sessionID,
+            vault_path: vaultOk ? notePath : null,
+            hash: claimHash,
+            fetched_at: Date.now(),
+          })
+          .run()
+          .pipe(Effect.orDie)
+      }
     })
 
     return Service.of({ capture })

@@ -9,7 +9,7 @@ import { UI } from "../ui"
 import { unlink } from "node:fs/promises"
 import { inArray, isNotNull } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
-import { MemoryFactTable, SessionTable } from "@opencode-ai/core/session/sql"
+import { MemoryFactTable, MemoryTombstoneTable, SessionTable } from "@opencode-ai/core/session/sql"
 import { cosine } from "@/memory/recall"
 
 export const MemoryCommand = cmd({
@@ -85,8 +85,9 @@ export const MemoryPruneCommand = effectCmd({
     const seen = new Map<string, (typeof facts)[number]>()
     const dupes: string[] = []
     for (const fact of facts) {
-      if (fact.hash && seen.has(fact.hash)) dupes.push(fact.id)
-      else if (fact.hash) seen.set(fact.hash, fact)
+      const key = `${fact.project_id ?? ""}\u0000${fact.hash}`
+      if (fact.hash && seen.has(key)) dupes.push(fact.id)
+      else if (fact.hash) seen.set(key, fact)
     }
 
     const withEmbeddings = facts.filter((f) => Array.isArray(f.embedding) && (f.embedding as number[]).length > 0)
@@ -125,6 +126,19 @@ export const MemoryPruneCommand = effectCmd({
       const ids = [...remove]
       const rows = facts.filter((f) => remove.has(f.id))
       yield* db.delete(MemoryFactTable).where(inArray(MemoryFactTable.id, ids)).run().pipe(Effect.orDie)
+      for (const row of rows) {
+        yield* db
+          .insert(MemoryTombstoneTable)
+          .values({
+            id: `mtb_${Date.now().toString(36)}_${row.hash.slice(0, 8)}`,
+            hash: row.hash,
+            project_id: row.project_id ?? null,
+            reason: "prune-duplicate",
+          })
+          .onConflictDoNothing()
+          .run()
+          .pipe(Effect.orDie)
+      }
       for (const row of rows) {
         if (!row.vault_path) continue
         yield* Effect.tryPromise({

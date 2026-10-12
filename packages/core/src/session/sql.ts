@@ -220,3 +220,104 @@ export const MemoryArchiveTable = sqliteTable(
   (table) => [index("memory_archive_date_idx").on(table.date)],
 )
 
+export const MemorySourceTable = sqliteTable(
+  "memory_source",
+  {
+    id: text().primaryKey(),
+    kind: text().notNull().default("session"),
+    ref: text(),
+    trust: real().notNull().default(1.0),
+    ...Timestamps,
+  },
+  (table) => [index("memory_source_kind_idx").on(table.kind)],
+)
+
+export const MemoryItemTable = sqliteTable(
+  "memory_item",
+  {
+    id: text().primaryKey(),
+    project_id: text()
+      .$type<ProjectV2.ID>()
+      .references(() => ProjectTable.id, { onDelete: "cascade" }),
+    kind: text().notNull().default("fact"),
+    status: text().notNull().default("active"),
+    claim: text().notNull(),
+    topic: text().notNull().default(""),
+    keywords: text({ mode: "json" }).$type<string[]>(),
+    embedding: text({ mode: "json" }).$type<number[]>(),
+    trust: real().notNull().default(1.0),
+    version: integer().notNull().default(1),
+    ttl_days: integer(),
+    source_id: text().references(() => MemorySourceTable.id, { onDelete: "set null" }),
+    session_id: text().$type<SessionSchema.ID>(),
+    vault_path: text(),
+    hash: text().notNull().default(""),
+    fetched_at: integer(),
+    ...Timestamps,
+  },
+  (table) => [
+    index("memory_item_project_idx").on(table.project_id),
+    index("memory_item_status_idx").on(table.status),
+    index("memory_item_topic_idx").on(table.topic),
+    uniqueIndex("memory_item_project_hash_idx").on(table.project_id, table.hash),
+  ],
+)
+
+export const MemoryEvidenceTable = sqliteTable(
+  "memory_evidence",
+  {
+    id: text().primaryKey(),
+    item_id: text()
+      .notNull()
+      .references(() => MemoryItemTable.id, { onDelete: "cascade" }),
+    kind: text().notNull().default("quote"),
+    ref: text(),
+    content: text(),
+    ...Timestamps,
+  },
+  (table) => [index("memory_evidence_item_idx").on(table.item_id)],
+)
+
+export const MemoryRelationTable = sqliteTable(
+  "memory_relation",
+  {
+    id: text().primaryKey(),
+    from_id: text()
+      .notNull()
+      .references(() => MemoryItemTable.id, { onDelete: "cascade" }),
+    to_id: text()
+      .notNull()
+      .references(() => MemoryItemTable.id, { onDelete: "cascade" }),
+    relation: text().notNull(),
+    ...Timestamps,
+  },
+  (table) => [
+    index("memory_relation_from_idx").on(table.from_id),
+    uniqueIndex("memory_relation_triple_idx").on(table.from_id, table.to_id, table.relation),
+  ],
+)
+
+export const MemoryTombstoneTable = sqliteTable(
+  "memory_tombstone",
+  {
+    id: text().primaryKey(),
+    hash: text().notNull(),
+    project_id: text().$type<ProjectV2.ID>(),
+    reason: text(),
+    ...Timestamps,
+  },
+  (table) => [uniqueIndex("memory_tombstone_project_hash_idx").on(table.project_id, table.hash)],
+)
+
+export const MemoryJobTable = sqliteTable(
+  "memory_job",
+  {
+    id: text().primaryKey(),
+    kind: text().notNull(),
+    status: text().notNull().default("pending"),
+    payload: text({ mode: "json" }).$type<Record<string, unknown>>(),
+    attempts: integer().notNull().default(0),
+    ...Timestamps,
+  },
+  (table) => [index("memory_job_status_idx").on(table.status)],
+)
