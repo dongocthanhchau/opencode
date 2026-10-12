@@ -121,15 +121,10 @@ const layer = Layer.effect(
             }
           },
           catch: (cause) => new Error("fts failed: " + String(cause)),
-        }).pipe(
-          Effect.tapError((cause) =>
-            Effect.logWarning("memory FTS prefilter failed, recall continues with no candidates", {
-              table,
-              error: cause instanceof Error ? cause.message : String(cause),
-            }),
-          ),
-          Effect.orElseSucceed(() => [] as { id: string }[]),
-        )
+        })
+      // No silent fallback: if the FTS index is missing or unreadable, recall
+      // must fail loudly here. The live prompt path wraps recall with
+      // orElseSucceed, so chat never breaks; the CLI surfaces this defect.
       const [factHits, itemHits] = yield* Effect.all([searchFts("memory_fact_fts"), searchFts("memory_item_fts")], {
         concurrency: 2,
       })
