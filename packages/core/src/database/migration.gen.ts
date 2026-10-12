@@ -45,6 +45,7 @@ export const migrations = (
     import("./migration/20261012144649_memory_project_hash_idx"),
     import("./migration/20261012150007_memory_item_model"),
     import("./migration/20261012150838_memory_item_ttl"),
+    import("./migration/20261012180321_cvis_orchestration_state"),
     import("./migration/20261012213841_fix_memory_fts_triggers"),
     import("./migration/20261012220000_fix_memory_fts_rowid"),
     import("./migration/20261012221000_memory_item_fts"),
