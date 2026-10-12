@@ -125,6 +125,40 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`memory_archive\` (
+          \`id\` text PRIMARY KEY,
+          \`date\` text NOT NULL,
+          \`session_id\` text,
+          \`project_id\` text,
+          \`payload\` text NOT NULL,
+          \`vault_path\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`memory_fact\` (
+          \`id\` text PRIMARY KEY,
+          \`session_id\` text,
+          \`project_id\` text,
+          \`fact\` text NOT NULL,
+          \`topic\` text DEFAULT '' NOT NULL,
+          \`keywords\` text,
+          \`embedding\` text,
+          \`vault_path\` text,
+          \`kind\` text DEFAULT 'fact' NOT NULL,
+          \`source\` text DEFAULT 'session' NOT NULL,
+          \`trust\` real DEFAULT 1 NOT NULL,
+          \`ttl_days\` integer,
+          \`fetched_at\` integer,
+          \`hash\` text DEFAULT '' NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`fk_memory_fact_session_id_session_id_fk\` FOREIGN KEY (\`session_id\`) REFERENCES \`session\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_memory_fact_project_id_project_id_fk\` FOREIGN KEY (\`project_id\`) REFERENCES \`project\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`message\` (
           \`id\` text PRIMARY KEY,
           \`session_id\` text NOT NULL,
@@ -240,6 +274,13 @@ export default {
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
       yield* tx.run(
         `CREATE UNIQUE INDEX \`permission_project_action_resource_idx\` ON \`permission\` (\`project_id\`,\`action\`,\`resource\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`memory_archive_date_idx\` ON \`memory_archive\` (\`date\`);`)
+      yield* tx.run(`CREATE INDEX \`memory_fact_session_idx\` ON \`memory_fact\` (\`session_id\`);`)
+      yield* tx.run(`CREATE INDEX \`memory_fact_project_idx\` ON \`memory_fact\` (\`project_id\`);`)
+      yield* tx.run(`CREATE INDEX \`memory_fact_topic_idx\` ON \`memory_fact\` (\`topic\`);`)
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`memory_fact_project_hash_idx\` ON \`memory_fact\` (\`project_id\`,\`hash\`);`,
       )
       yield* tx.run(
         `CREATE INDEX \`message_session_time_created_id_idx\` ON \`message\` (\`session_id\`,\`time_created\`,\`id\`);`,

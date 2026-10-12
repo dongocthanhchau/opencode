@@ -174,3 +174,49 @@ export const SessionContextEpochTable = sqliteTable("session_context_epoch", {
   snapshot: text({ mode: "json" }).notNull().$type<SystemContext.Snapshot>(),
   baseline_seq: integer().notNull(),
 })
+
+export const MemoryFactTable = sqliteTable(
+  "memory_fact",
+  {
+    id: text().primaryKey(),
+    session_id: text()
+      .$type<SessionSchema.ID>()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    project_id: text()
+      .$type<ProjectV2.ID>()
+      .references(() => ProjectTable.id, { onDelete: "cascade" }),
+    fact: text().notNull(),
+    topic: text().notNull().default(""),
+    keywords: text({ mode: "json" }).$type<string[]>(),
+    embedding: text({ mode: "json" }).$type<number[]>(),
+    vault_path: text(),
+    kind: text().notNull().default("fact"),
+    source: text().notNull().default("session"),
+    trust: real().notNull().default(1.0),
+    ttl_days: integer(),
+    fetched_at: integer(),
+    hash: text().notNull().default(""),
+    ...Timestamps,
+  },
+  (table) => [
+    index("memory_fact_session_idx").on(table.session_id),
+    index("memory_fact_project_idx").on(table.project_id),
+    index("memory_fact_topic_idx").on(table.topic),
+    uniqueIndex("memory_fact_project_hash_idx").on(table.project_id, table.hash),
+  ],
+)
+
+export const MemoryArchiveTable = sqliteTable(
+  "memory_archive",
+  {
+    id: text().primaryKey(),
+    date: text().notNull(),
+    session_id: text().$type<SessionSchema.ID>(),
+    project_id: text().$type<ProjectV2.ID>(),
+    payload: text({ mode: "json" }).notNull().$type<Record<string, unknown>>(),
+    vault_path: text(),
+    ...Timestamps,
+  },
+  (table) => [index("memory_archive_date_idx").on(table.date)],
+)
+

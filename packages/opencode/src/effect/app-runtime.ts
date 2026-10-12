@@ -25,6 +25,8 @@ import { Session } from "@/session/session"
 import { SessionStatus } from "@/session/status"
 import { SessionRunState } from "@/session/run-state"
 import { SessionProcessor } from "@/session/processor"
+import { MemoryCapture } from "@/memory/capture"
+import { MemoryRecall } from "@/memory/recall"
 import { SessionCompaction } from "@/session/compaction"
 import { SessionRevert } from "@/session/revert"
 import { SessionSummary } from "@/session/summary"
@@ -85,6 +87,8 @@ export const AppLayer = AppNodeBuilderV1.build(
     SessionRunState.node,
     SessionProcessor.node,
     SessionCompaction.node,
+    MemoryCapture.node,
+    MemoryRecall.node,
     SessionRevert.node,
     SessionSummary.node,
     SessionPrompt.node,

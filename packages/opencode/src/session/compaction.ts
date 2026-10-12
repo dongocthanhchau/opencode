@@ -9,6 +9,7 @@ import { Token } from "@/util/token"
 import { SessionProcessor } from "./processor"
 import { Agent } from "@/agent/agent"
 import { Plugin } from "@/plugin"
+import { MemoryCapture } from "@/memory/capture"
 import { Config } from "@/config/config"
 import { NotFoundError } from "@/storage/storage"
 
@@ -199,6 +200,7 @@ const layer = Layer.effect(
     const provider = yield* Provider.Service
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
+    const memoryCapture = yield* MemoryCapture.Service
 
     const isOverflow = Effect.fn("SessionCompaction.isOverflow")(function* (input: {
       tokens: SessionV1.Assistant["tokens"]
@@ -552,6 +554,7 @@ const layer = Layer.effect(
       if (processor.message.error) return "stop"
       if (result === "continue") {
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
+        yield* Effect.forkDetach(Effect.ignore(memoryCapture.capture({ sessionID: input.sessionID })))
       }
       return result
     })
@@ -602,6 +605,7 @@ export const node = LayerNode.make({
     Provider.node,
     EventV2Bridge.node,
     RuntimeFlags.node,
+    MemoryCapture.node,
   ],
 })
 
