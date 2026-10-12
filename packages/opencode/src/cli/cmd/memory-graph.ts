@@ -3,7 +3,11 @@ import { Effect } from "effect"
 import { cmd } from "./cmd"
 import { effectCmd } from "../effect-cmd"
 import { Database } from "@opencode-ai/core/database/database"
-import { MemoryFactTable } from "@opencode-ai/core/session/sql"
+import {
+  MemoryFactTable,
+  MemoryItemTable,
+  MemoryRelationTable,
+} from "@opencode-ai/core/session/sql"
 import { Filesystem } from "@/util/filesystem"
 import { UI } from "../ui"
 
@@ -40,20 +44,36 @@ export const MemoryGraphCommand = effectCmd({
       .orderBy(desc(MemoryFactTable.time_created))
       .all()
       .pipe(Effect.orDie)
-    const sliced = facts.slice(0, args.limit)
+    const items = yield* db
+      .select()
+      .from(MemoryItemTable)
+      .orderBy(desc(MemoryItemTable.time_created))
+      .all()
+      .pipe(Effect.orDie)
+    const relations = yield* db
+      .select()
+      .from(MemoryRelationTable)
+      .all()
+      .pipe(Effect.orDie)
+    const sliced = [...facts.slice(0, args.limit), ...items.filter((i) => i.status !== "deleted").slice(0, args.limit)]
     const nodes: { id: string; label: string; kind: string; color: string; size: number; fact: string }[] = []
     const edges: { a: number; b: number }[] = []
     const topicIndex = new Map<string, number>()
     const byId = new Map<string, number>()
     sliced.forEach((f, i) => {
       byId.set(f.id, i)
+      const isItem = "claim" in f
+      const text_ = isItem ? f.claim : f.fact
+      const status = isItem ? f.status : "active"
+      const baseColor = KIND_COLORS[f.kind || "fact"] || "#38bdf8"
+      const color = status === "superseded" ? "#475569" : baseColor
       nodes.push({
         id: f.id,
         label: (f.topic || f.kind || "memory").slice(0, 28),
-        kind: f.kind || "fact",
-        color: KIND_COLORS[f.kind || "fact"] || "#38bdf8",
-        size: 4 + Math.min(10, (f.trust ?? 1) * 6),
-        fact: f.fact,
+        kind: isItem ? (f.kind || "item") : (f.kind || "fact"),
+        color,
+        size: 4 + Math.min(10, (f.trust ?? 1) * 6) * (status === "superseded" ? 0.5 : 1),
+        fact: text_,
       })
     })
     sliced.forEach((f, i) => {
@@ -67,11 +87,18 @@ export const MemoryGraphCommand = effectCmd({
       }
       edges.push({ a: i, b: ti })
     })
+    // Phase 3: draw relation edges (supersedes / related).
+    for (const rel of relations) {
+      const ai = byId.get(rel.from_id)
+      const bi = byId.get(rel.to_id)
+      if (ai !== undefined && bi !== undefined) edges.push({ a: ai, b: bi })
+    }
     const wordsOf = (id: string) => {
       const f = sliced[byId.get(id) ?? -1]
       if (!f) return new Set<string>()
+      const text_ = "claim" in f ? f.claim : f.fact
       return new Set(
-        (f.fact + " " + (f.topic || "")).toLowerCase().split(/[^a-z0-9-_]+/).filter((w) => w.length > 4),
+        (text_ + " " + (f.topic || "")).toLowerCase().split(/[^a-z0-9-_]+/).filter((w) => w.length > 4),
       )
     }
     for (let i = 0; i < sliced.length; i++) {
