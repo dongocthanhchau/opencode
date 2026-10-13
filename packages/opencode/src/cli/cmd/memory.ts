@@ -1,7 +1,7 @@
 import type { Argv } from "yargs"
-import { Effect } from "effect"
+import { Cause, Effect } from "effect"
 import { cmd } from "./cmd"
-import { CliError, effectCmd } from "../effect-cmd"
+import { effectCmd, fail } from "../effect-cmd"
 import { MemoryCapture, classifyRelation } from "@/memory/capture"
 import { MemoryRecall } from "@/memory/recall"
 import { MemoryGraphCommand } from "./memory-graph"
@@ -54,17 +54,11 @@ export const MemoryRecallCommand = effectCmd({
     const svc = yield* MemoryRecall.Service
     // Strict variant: surfaces failures (e.g. unreadable FTS index) instead
     // of printing an empty result. The live prompt path keeps using recall.
-    const out = yield* svc
-      .recallStrict({ sessionID: SessionID.make(args.sessionID) })
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new CliError({
-              message: `memory recall failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-            }),
-        ),
-      )
-    UI.println(out ?? "(no memories recalled)")
+    const exit = yield* Effect.exit(svc.recallStrict({ sessionID: SessionID.make(args.sessionID) }))
+    if (exit._tag === "Failure") {
+      return yield* fail(`memory recall failed: ${Cause.pretty(exit.cause)}`)
+    }
+    UI.println(exit.value ?? "(no memories recalled)")
   }),
 })
 export const MemoryPruneCommand = effectCmd({
