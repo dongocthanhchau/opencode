@@ -36,6 +36,8 @@ export const CvisCommand = cmd({
       .command(CvisHandoffCommand)
       .command(CvisReuseCheckCommand)
       .command(CvisCleanPreviewCommand)
+      .command(CvisSnapshotCommand)
+      .command(CvisTaskDetailCommand)
       .command(CvisMessageSendCommand)
       .command(CvisMessageAckCommand)
       .command(CvisEventsCommand)
@@ -635,6 +637,30 @@ export const CvisCleanPreviewCommand = effectCmd({
     const out = yield* run(
       svc.cleanCandidates({ projectID: args.project as string, idleDays: (args.days as number | undefined) ?? 30 }),
     )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisSnapshotCommand = effectCmd({
+  command: "snapshot",
+  describe: "project overview for kanban: goals, status columns, bindings, event cursor",
+  instance: false,
+  builder: (yargs) => projectOption(yargs),
+  handler: Effect.fn("Cli.cvis.snapshot")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.projectSnapshot({ projectID: args.project as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTaskDetailCommand = effectCmd({
+  command: "task-detail <id>",
+  describe: "full task detail: progress, runs, checks, messages, events",
+  instance: false,
+  builder: (yargs) => yargs.positional("id", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.taskDetail")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.taskDetail({ taskID: args.id as string }))
     UI.println(JSON.stringify(out))
   }),
 })

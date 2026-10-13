@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { and, eq, gt } from "drizzle-orm"
+import { and, eq, gte } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ProjectV2 } from "@opencode-ai/core/project"
@@ -147,6 +147,13 @@ export interface Interface {
     projectID: string
     idleDays: number
   }) => Effect.Effect<{ id: string; title: string; reason: string; time: number }[]>
+  readonly projectSnapshot: (input: { projectID: string }) => Effect.Effect<{
+    eventCursor: number
+    goals: { id: string; title: string; status: string; percent: number; used: number; cap: number | null }[]
+    columns: { status: string; tasks: { id: string; title: string; role: string; percent: number; goalID: string | null }[] }[]
+    bindings: { session: string; role: string; status: string; task: string | null }[]
+  }, NotFoundError>
+  readonly taskDetail: (input: { taskID: string }) => Effect.Effect<Record<string, unknown>, NotFoundError>
   readonly bindSession: (input: {
     sessionID: string
     projectID: string
@@ -1176,6 +1183,130 @@ const layer = Layer.effect(
       return out.sort((a, b) => a.time - b.time)
     })
 
+    const projectSnapshot = Effect.fn("Cvis.projectSnapshot")(function* (input: { projectID: string }) {
+      const goals = yield* db
+        .select()
+        .from(CvisProjectGoalTable)
+        .where(eq(CvisProjectGoalTable.project_id, input.projectID))
+        .all()
+        .pipe(Effect.orDie)
+      const goalEntries: { id: string; title: string; status: string; percent: number; used: number; cap: number | null }[] = []
+      for (const goal of goals) {
+        const progress = yield* goalProgress({ goalID: goal.id })
+        goalEntries.push({
+          id: goal.id,
+          title: goal.title,
+          status: goal.status,
+          percent: progress.percent,
+          used: yield* goalSpend(goal.id),
+          cap: goal.budget_tokens,
+        })
+      }
+      const tasks = yield* db
+        .select()
+        .from(CvisTaskTable)
+        .where(eq(CvisTaskTable.project_id, input.projectID))
+        .all()
+        .pipe(Effect.orDie)
+      const columns = new Map<string, { id: string; title: string; role: string; percent: string | number; goalID: string | null }[]>()
+      for (const task of tasks) {
+        const progress = yield* taskProgress({ taskID: task.id })
+        const list = columns.get(task.status) ?? []
+        list.push({ id: task.id, title: task.title, role: task.role, percent: progress.percent, goalID: task.goal_id })
+        columns.set(task.status, list)
+      }
+      const bindings = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.project_id, input.projectID))
+        .all()
+        .pipe(Effect.orDie)
+      const latest = yield* db
+        .select({ time: CvisEventTable.time_created })
+        .from(CvisEventTable)
+        .where(eq(CvisEventTable.project_id, input.projectID))
+        .all()
+        .pipe(Effect.orDie)
+      return {
+        eventCursor: latest.reduce((max, r) => Math.max(max, r.time), 0),
+        goals: goalEntries,
+        columns: [...columns.entries()].map(([status, list]) => ({
+          status,
+          tasks: list as { id: string; title: string; role: string; percent: number; goalID: string | null }[],
+        })),
+        bindings: bindings.map((b) => ({ session: b.session_id, role: b.role, status: b.status, task: b.task_id })),
+      }
+    })
+
+    const taskDetail = Effect.fn("Cvis.taskDetail")(function* (input: { taskID: string }) {
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      const progress = yield* taskProgress({ taskID: input.taskID })
+      const runs = yield* db
+        .select()
+        .from(CvisTaskRunTable)
+        .where(eq(CvisTaskRunTable.task_id, input.taskID))
+        .all()
+        .pipe(Effect.orDie)
+      const checks = yield* db
+        .select()
+        .from(CvisCheckTable)
+        .where(eq(CvisCheckTable.task_id, input.taskID))
+        .all()
+        .pipe(Effect.orDie)
+      const messages = yield* db
+        .select()
+        .from(CvisMessageTable)
+        .where(eq(CvisMessageTable.task_id, input.taskID))
+        .all()
+        .pipe(Effect.orDie)
+      const events = yield* db
+        .select()
+        .from(CvisEventTable)
+        .where(eq(CvisEventTable.project_id, task.project_id))
+        .all()
+        .pipe(Effect.orDie)
+      const goal = task.goal_id
+        ? yield* db.select().from(CvisProjectGoalTable).where(eq(CvisProjectGoalTable.id, task.goal_id)).get().pipe(Effect.orDie)
+        : null
+      return {
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          role: task.role,
+          status: task.status,
+          revision: task.revision,
+          scope: task.scope,
+          progress,
+        },
+        goal: goal ? { id: goal.id, title: goal.title, status: goal.status } : null,
+        runs: runs
+          .sort((a, b) => b.attempt - a.attempt)
+          .map((run) => ({
+            id: run.id,
+            attempt: run.attempt,
+            session: run.session_id,
+            status: run.status,
+            tokens: run.tokens_used,
+            error: run.error,
+          })),
+        checks: checks.map((check) => ({
+          check: check.check_id,
+          verdict: check.verdict,
+          verifier: check.verifier_session,
+          run: check.run_id,
+        })),
+        messages: messages
+          .sort((a, b) => a.time_created - b.time_created)
+          .map((message) => ({ id: message.id, kind: message.kind, from: message.from_session, status: message.status })),
+        events: events
+          .filter((event) => event.entity_id === input.taskID || event.entity_id.startsWith(`${input.taskID}:`))
+          .sort((a, b) => a.time_created - b.time_created)
+          .map((event) => ({ type: event.type, time: event.time_created })),
+      }
+    })
+
     const bindSession = Effect.fn("Cvis.bindSession")(function* (input: {
       sessionID: string
       projectID: string
@@ -1395,11 +1526,14 @@ const layer = Layer.effect(
       return rows
     })
 
+    // Cursor is inclusive (>=): reconnecting clients refetch from their last
+    // seen timestamp and dedupe by event id, so same-millisecond batches are
+    // never skipped. Clients must tolerate boundary duplicates.
     const listEvents = Effect.fn("Cvis.listEvents")(function* (input: { projectID: string; cursor?: number; limit?: number }) {
       const cond =
         input.cursor == null
           ? eq(CvisEventTable.project_id, input.projectID)
-          : and(eq(CvisEventTable.project_id, input.projectID), gt(CvisEventTable.time_created, input.cursor))
+          : and(eq(CvisEventTable.project_id, input.projectID), gte(CvisEventTable.time_created, input.cursor))
       const rows = yield* db
         .select()
         .from(CvisEventTable)
@@ -1420,6 +1554,8 @@ const layer = Layer.effect(
 
     return Service.of({
       buildRuleset,
+      projectSnapshot,
+      taskDetail,
       listTemplates,
       createTemplate,
       renderTemplate,
