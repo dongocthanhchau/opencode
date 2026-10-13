@@ -148,6 +148,18 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`cvis_prompt_template\` (
+          \`id\` text PRIMARY KEY,
+          \`name\` text NOT NULL,
+          \`role\` text,
+          \`version\` integer DEFAULT 1 NOT NULL,
+          \`body\` text NOT NULL,
+          \`inputs\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`cvis_session_binding\` (
           \`session_id\` text PRIMARY KEY,
           \`project_id\` text NOT NULL,
@@ -479,6 +491,10 @@ export default {
         `CREATE UNIQUE INDEX \`cvis_message_idem_idx\` ON \`cvis_message\` (\`project_id\`,\`idempotency_key\`);`,
       )
       yield* tx.run(`CREATE INDEX \`cvis_goal_project_idx\` ON \`cvis_project_goal\` (\`project_id\`);`)
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`cvis_template_name_version_idx\` ON \`cvis_prompt_template\` (\`name\`,\`version\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`cvis_template_role_idx\` ON \`cvis_prompt_template\` (\`role\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_binding_project_idx\` ON \`cvis_session_binding\` (\`project_id\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_binding_task_idx\` ON \`cvis_session_binding\` (\`task_id\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_run_task_idx\` ON \`cvis_task_run\` (\`task_id\`);`)

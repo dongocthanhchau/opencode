@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "7e3c4ee1-cad6-47ee-8ac3-13ebeb461cf2",
+  "id": "be150797-3100-40d5-9a83-e6b0ea58d824",
   "prevIds": [
-    "732331c3-008a-4ec2-b1e5-915bc2de7509"
+    "7e3c4ee1-cad6-47ee-8ac3-13ebeb461cf2"
   ],
   "ddl": [
     {
@@ -52,6 +52,10 @@
     },
     {
       "name": "cvis_project_goal",
+      "entityType": "tables"
+    },
+    {
+      "name": "cvis_prompt_template",
       "entityType": "tables"
     },
     {
@@ -981,6 +985,86 @@
       "name": "time_updated",
       "entityType": "columns",
       "table": "cvis_project_goal"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "role",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "version",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "body",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "inputs",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "cvis_prompt_template"
     },
     {
       "type": "text",
@@ -3658,6 +3742,15 @@
     },
     {
       "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "cvis_prompt_template_pk",
+      "table": "cvis_prompt_template",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
         "session_id"
       ],
       "nameExplicit": false,
@@ -4007,6 +4100,38 @@
       "name": "cvis_goal_project_idx",
       "entityType": "indexes",
       "table": "cvis_project_goal"
+    },
+    {
+      "columns": [
+        {
+          "value": "name",
+          "isExpression": false
+        },
+        {
+          "value": "version",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "cvis_template_name_version_idx",
+      "entityType": "indexes",
+      "table": "cvis_prompt_template"
+    },
+    {
+      "columns": [
+        {
+          "value": "role",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "cvis_template_role_idx",
+      "entityType": "indexes",
+      "table": "cvis_prompt_template"
     },
     {
       "columns": [

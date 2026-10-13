@@ -74,6 +74,23 @@ export const CvisCheckTable = sqliteTable(
   ],
 )
 
+export const CvisPromptTemplateTable = sqliteTable(
+  "cvis_prompt_template",
+  {
+    id: text().primaryKey(),
+    name: text().notNull(),
+    role: text(),
+    version: integer().notNull().default(1),
+    body: text().notNull(),
+    inputs: text({ mode: "json" }).$type<{ name: string; required: boolean }[]>(),
+    ...Timestamps,
+  },
+  (table) => [
+    uniqueIndex("cvis_template_name_version_idx").on(table.name, table.version),
+    index("cvis_template_role_idx").on(table.role),
+  ],
+)
+
 export const CvisTaskRunTable = sqliteTable(
   "cvis_task_run",
   {

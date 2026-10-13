@@ -52,5 +52,6 @@ export const migrations = (
     import("./migration/20261012230000_ensure_memory_fts"),
     import("./migration/20261013000000_memory_fts_project"),
     import("./migration/20261013005454_cvis_checks_revisions"),
+    import("./migration/20261013010844_cvis_prompt_templates"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

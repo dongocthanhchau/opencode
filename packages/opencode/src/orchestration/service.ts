@@ -3,12 +3,14 @@ import { and, eq, gt } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ProjectV2 } from "@opencode-ai/core/project"
+import { SessionTable } from "@opencode-ai/core/session/sql"
 import { Session } from "@/session/session"
 import { SessionID } from "../session/schema"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import {
   CvisCheckTable,
   CvisEventTable,
+  CvisPromptTemplateTable,
   CvisMessageTable,
   CvisProjectGoalTable,
   CvisSessionBindingTable,
@@ -28,6 +30,8 @@ import {
   TaskStatus,
 } from "./machine"
 import { Role, checkResolvedPaths, effectiveRuleset, scopesOverlap, toRuleset, validateScope } from "./roles"
+import { OrchestrationTemplates } from "./templates"
+import { estimate } from "@/util/token"
 import type { TaskScope } from "./roles"
 
 export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("CvisNotFound", {
@@ -120,6 +124,29 @@ export interface Interface {
     goalID?: string
     taskID?: string
   }) => Effect.Effect<{ used: number; cap: number | null }, NotFoundError>
+  readonly listTemplates: (input: { role?: string }) => Effect.Effect<
+    { id: string; name: string; role: string | null; version: number }[]
+  >
+  readonly createTemplate: (input: {
+    name: string
+    role?: string
+    body: string
+    inputs?: { name: string; required: boolean }[]
+  }) => Effect.Effect<{ id: string; version: number }, InvalidTransitionError>
+  readonly renderTemplate: (input: {
+    name: string
+    vars: Record<string, string>
+  }) => Effect.Effect<{ text: string; tokens: number }, NotFoundError | InvalidTransitionError>
+  readonly contextPack: (input: { taskID: string }) => Effect.Effect<Record<string, unknown>, NotFoundError>
+  readonly handoffBrief: (input: { sessionID: string }) => Effect.Effect<Record<string, unknown>, NotFoundError>
+  readonly reuseCheck: (input: {
+    sessionID: string
+    taskID: string
+  }) => Effect.Effect<{ eligible: boolean; reasons: string[] }, NotFoundError>
+  readonly cleanCandidates: (input: {
+    projectID: string
+    idleDays: number
+  }) => Effect.Effect<{ id: string; title: string; reason: string; time: number }[]>
   readonly bindSession: (input: {
     sessionID: string
     projectID: string
@@ -928,6 +955,227 @@ const layer = Layer.effect(
       return { used: yield* goalSpend(goal.id), cap: goal.budget_tokens }
     })
 
+    const listTemplates = Effect.fn("Cvis.listTemplates")(function* (input: { role?: string }) {
+      const rows = yield* db
+        .select({
+          id: CvisPromptTemplateTable.id,
+          name: CvisPromptTemplateTable.name,
+          role: CvisPromptTemplateTable.role,
+          version: CvisPromptTemplateTable.version,
+        })
+        .from(CvisPromptTemplateTable)
+        .all()
+        .pipe(Effect.orDie)
+      const latest = new Map<string, (typeof rows)[number]>()
+      for (const row of rows) {
+        if (input.role != null && row.role != null && row.role !== input.role) continue
+        const current = latest.get(row.name)
+        if (!current || row.version > current.version) latest.set(row.name, row)
+      }
+      return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name))
+    })
+
+    const createTemplate = Effect.fn("Cvis.createTemplate")(function* (input: {
+      name: string
+      role?: string
+      body: string
+      inputs?: { name: string; required: boolean }[]
+    }) {
+      const trimmed = input.name.trim()
+      if (trimmed.length === 0 || input.body.trim().length === 0) {
+        return yield* new InvalidTransitionError({ entity: "template", id: input.name, from: "", to: "empty" })
+      }
+      const existing = yield* db
+        .select({ version: CvisPromptTemplateTable.version })
+        .from(CvisPromptTemplateTable)
+        .where(eq(CvisPromptTemplateTable.name, trimmed))
+        .all()
+        .pipe(Effect.orDie)
+      const version = existing.reduce((max, r) => Math.max(max, r.version), 0) + 1
+      const id = newID("tmpl")
+      yield* db
+        .insert(CvisPromptTemplateTable)
+        .values({ id, name: trimmed, role: input.role ?? null, version, body: input.body, inputs: input.inputs ?? null })
+        .run()
+        .pipe(Effect.orDie)
+      return { id, version }
+    })
+
+    const renderTemplate = Effect.fn("Cvis.renderTemplate")(function* (input: {
+      name: string
+      vars: Record<string, string>
+    }) {
+      const rows = yield* db
+        .select()
+        .from(CvisPromptTemplateTable)
+        .where(eq(CvisPromptTemplateTable.name, input.name))
+        .all()
+        .pipe(Effect.orDie)
+      if (rows.length === 0) return yield* new NotFoundError({ entity: "template", id: input.name })
+      const template = rows.reduce((best, row) => (row.version > best.version ? row : best))
+      const rendered = OrchestrationTemplates.renderTemplate(template.body, (template.inputs ?? []) as { name: string; required: boolean }[], input.vars)
+      if (!rendered.ok) {
+        return yield* new InvalidTransitionError({
+          entity: "template",
+          id: input.name,
+          from: "render",
+          to: `missing: ${rendered.missing.join(",")}`,
+        })
+      }
+      return { text: rendered.text, tokens: estimate(rendered.text) }
+    })
+
+    const contextPack = Effect.fn("Cvis.contextPack")(function* (input: { taskID: string }) {
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      const progress = yield* taskProgress({ taskID: input.taskID })
+      const runs = yield* db
+        .select()
+        .from(CvisTaskRunTable)
+        .where(eq(CvisTaskRunTable.task_id, input.taskID))
+        .all()
+        .pipe(Effect.orDie)
+      const messages = yield* db
+        .select()
+        .from(CvisMessageTable)
+        .where(eq(CvisMessageTable.task_id, input.taskID))
+        .all()
+        .pipe(Effect.orDie)
+      const goal = task.goal_id
+        ? yield* db.select().from(CvisProjectGoalTable).where(eq(CvisProjectGoalTable.id, task.goal_id)).get().pipe(Effect.orDie)
+        : null
+      const pack = {
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          role: task.role,
+          status: task.status,
+          revision: task.revision,
+          scope: task.scope,
+          progress,
+        },
+        goal: goal ? { id: goal.id, title: goal.title, objective: goal.objective, status: goal.status } : null,
+        runs: runs
+          .sort((a, b) => b.attempt - a.attempt)
+          .slice(0, 3)
+          .map((run) => ({ attempt: run.attempt, status: run.status, tokens: run.tokens_used, error: run.error })),
+        messages: messages
+          .sort((a, b) => b.time_created - a.time_created)
+          .slice(0, 10)
+          .map((message) => ({ kind: message.kind, from: message.from_session, body: message.body })),
+      }
+      return { ...pack, tokens: estimate(JSON.stringify(pack)) }
+    })
+
+    const handoffBrief = Effect.fn("Cvis.handoffBrief")(function* (input: { sessionID: string }) {
+      const binding = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      const session = yield* db.select().from(SessionTable).where(eq(SessionTable.id, SessionID.make(input.sessionID))).get().pipe(Effect.orDie)
+      if (!binding && !session) return yield* new NotFoundError({ entity: "session", id: input.sessionID })
+      const brief: Record<string, unknown> = {
+        sessionID: input.sessionID,
+        title: session?.title ?? null,
+        role: binding?.role ?? null,
+        bindingStatus: binding?.status ?? null,
+        task: null,
+        openRuns: [],
+        pendingInbox: 0,
+        recentEvents: [],
+      }
+      if (binding?.task_id) {
+        const pack = yield* contextPack({ taskID: binding.task_id })
+        brief["task"] = pack.task
+        brief["goal"] = pack.goal
+      }
+      const openRuns = yield* db
+        .select({ id: CvisTaskRunTable.id, status: CvisTaskRunTable.status, session_id: CvisTaskRunTable.session_id })
+        .from(CvisTaskRunTable)
+        .where(eq(CvisTaskRunTable.session_id, input.sessionID))
+        .all()
+        .pipe(Effect.orDie)
+      brief["openRuns"] = openRuns.filter((run) => run.status === "pending" || run.status === "running" || run.status === "verifying")
+      const inbox = yield* db
+        .select({ id: CvisMessageTable.id })
+        .from(CvisMessageTable)
+        .where(eq(CvisMessageTable.to_session, input.sessionID))
+        .all()
+        .pipe(Effect.orDie)
+      brief["pendingInbox"] = inbox.length
+      if (binding) {
+        const events = yield* db
+          .select()
+          .from(CvisEventTable)
+          .where(eq(CvisEventTable.project_id, binding.project_id))
+          .all()
+          .pipe(Effect.orDie)
+        brief["recentEvents"] = events
+          .sort((a, b) => b.time_created - a.time_created)
+          .slice(0, 10)
+          .map((event) => ({ type: event.type, entity: `${event.entity_kind}:${event.entity_id}`, time: event.time_created }))
+      }
+      return brief
+    })
+
+    const reuseCheck = Effect.fn("Cvis.reuseCheck")(function* (input: { sessionID: string; taskID: string }) {
+      const reasons: string[] = []
+      const binding = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      if (binding) {
+        if (binding.status !== "idle") reasons.push(`binding is ${binding.status}`)
+        if (binding.project_id !== task.project_id) reasons.push("different project")
+        if (binding.role !== task.role) reasons.push(`role mismatch: ${binding.role} vs ${task.role}`)
+        if (binding.task_id != null && binding.task_id !== input.taskID) reasons.push("unfinished previous task")
+      } else {
+        const session = yield* db.select().from(SessionTable).where(eq(SessionTable.id, SessionID.make(input.sessionID))).get().pipe(Effect.orDie)
+        if (!session) return yield* new NotFoundError({ entity: "session", id: input.sessionID })
+        if (session.project_id !== task.project_id) reasons.push("different project")
+      }
+      const open = yield* db
+        .select({ status: CvisTaskRunTable.status })
+        .from(CvisTaskRunTable)
+        .where(eq(CvisTaskRunTable.session_id, input.sessionID))
+        .all()
+        .pipe(Effect.orDie)
+      if (open.some((run) => run.status === "pending" || run.status === "running" || run.status === "verifying")) {
+        reasons.push("session has open runs")
+      }
+      return { eligible: reasons.length === 0, reasons }
+    })
+
+    const cleanCandidates = Effect.fn("Cvis.cleanCandidates")(function* (input: { projectID: string; idleDays: number }) {
+      const cutoff = Date.now() - Math.max(0, input.idleDays) * 86_400_000
+      const sessions = yield* db.select().from(SessionTable).where(eq(SessionTable.project_id, ProjectV2.ID.make(input.projectID))).all().pipe(Effect.orDie)
+      const out: { id: string; title: string; reason: string; time: number }[] = []
+      for (const session of sessions) {
+        if ((session.time_updated ?? 0) >= cutoff) continue
+        const binding = yield* db
+          .select()
+          .from(CvisSessionBindingTable)
+          .where(eq(CvisSessionBindingTable.session_id, session.id))
+          .get()
+          .pipe(Effect.orDie)
+        if (!binding) {
+          out.push({ id: session.id, title: session.title, reason: "idle, never bound", time: session.time_updated ?? 0 })
+          continue
+        }
+        if (binding.status === "idle" && binding.task_id == null) {
+          out.push({ id: session.id, title: session.title, reason: "idle, no task", time: session.time_updated ?? 0 })
+        }
+      }
+      return out.sort((a, b) => a.time - b.time)
+    })
+
     const bindSession = Effect.fn("Cvis.bindSession")(function* (input: {
       sessionID: string
       projectID: string
@@ -1172,6 +1420,13 @@ const layer = Layer.effect(
 
     return Service.of({
       buildRuleset,
+      listTemplates,
+      createTemplate,
+      renderTemplate,
+      contextPack,
+      handoffBrief,
+      reuseCheck,
+      cleanCandidates,
       verifyCheck,
       taskProgress,
       goalProgress,

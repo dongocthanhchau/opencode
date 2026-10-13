@@ -29,6 +29,13 @@ export const CvisCommand = cmd({
       .command(CvisGoalProgressCommand)
       .command(CvisTaskReviseCommand)
       .command(CvisBudgetCommand)
+      .command(CvisTemplateCreateCommand)
+      .command(CvisTemplateListCommand)
+      .command(CvisTemplateRenderCommand)
+      .command(CvisContextPackCommand)
+      .command(CvisHandoffCommand)
+      .command(CvisReuseCheckCommand)
+      .command(CvisCleanPreviewCommand)
       .command(CvisMessageSendCommand)
       .command(CvisMessageAckCommand)
       .command(CvisEventsCommand)
@@ -519,6 +526,114 @@ export const CvisBudgetCommand = effectCmd({
         goalID: (args.goal as string | undefined) ?? undefined,
         taskID: (args.task as string | undefined) ?? undefined,
       }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTemplateCreateCommand = effectCmd({
+  command: "template-create <name>",
+  describe: "create a versioned prompt template",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("name", { type: "string", demandOption: true })
+      .option("role", { type: "string" })
+      .option("body", { type: "string", demandOption: true })
+      .option("inputs", { type: "string", describe: "inputs as JSON" }),
+  handler: Effect.fn("Cli.cvis.templateCreate")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.createTemplate({
+        name: args.name as string,
+        role: (args.role as string | undefined) ?? undefined,
+        body: args.body as string,
+        inputs: args.inputs ? (JSON.parse(args.inputs as string) as { name: string; required: boolean }[]) : undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTemplateListCommand = effectCmd({
+  command: "template-list",
+  describe: "list prompt templates (latest version per name)",
+  instance: false,
+  builder: (yargs) => yargs.option("role", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.templateList")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.listTemplates({ role: (args.role as string | undefined) ?? undefined }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTemplateRenderCommand = effectCmd({
+  command: "template-render <name>",
+  describe: "render a prompt template with variables",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("name", { type: "string", demandOption: true })
+      .option("var", { type: "string", array: true, describe: "name=value pairs" }),
+  handler: Effect.fn("Cli.cvis.templateRender")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const vars: Record<string, string> = {}
+    for (const pair of (args.var as string[] | undefined) ?? []) {
+      const at = pair.indexOf("=")
+      if (at > 0) vars[pair.slice(0, at)] = pair.slice(at + 1)
+    }
+    const out = yield* run(svc.renderTemplate({ name: args.name as string, vars }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisContextPackCommand = effectCmd({
+  command: "context-pack <task>",
+  describe: "assemble goal, task, runs, and messages for prompt injection",
+  instance: false,
+  builder: (yargs) => yargs.positional("task", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.contextPack")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.contextPack({ taskID: args.task as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisHandoffCommand = effectCmd({
+  command: "handoff <session>",
+  describe: "compact brief for continuing work in another session",
+  instance: false,
+  builder: (yargs) => yargs.positional("session", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.handoff")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.handoffBrief({ sessionID: args.session as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisReuseCheckCommand = effectCmd({
+  command: "reuse-check",
+  describe: "check whether a session can take a task without contamination",
+  instance: false,
+  builder: (yargs) =>
+    yargs.option("session", { type: "string", demandOption: true }).option("task", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.reuseCheck")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.reuseCheck({ sessionID: args.session as string, taskID: args.task as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisCleanPreviewCommand = effectCmd({
+  command: "clean-preview",
+  describe: "list idle unbound sessions older than a cutoff (no deletion)",
+  instance: false,
+  builder: (yargs) =>
+    projectOption(yargs).option("days", { type: "number", default: 30 }),
+  handler: Effect.fn("Cli.cvis.cleanPreview")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.cleanCandidates({ projectID: args.project as string, idleDays: (args.days as number | undefined) ?? 30 }),
     )
     UI.println(JSON.stringify(out))
   }),
