@@ -67,7 +67,7 @@ const layer = Layer.mergeAll(
   Layer.succeed(Permission.Service, fakePermission),
   Layer.succeed(
     OrchestrationPolicy.Service,
-    OrchestrationPolicy.Service.of({ authorize: () => Effect.void, catalog: (input) => Effect.succeed(input.tools) }),
+    OrchestrationPolicy.Service.of({ authorize: () => Effect.void, catalog: (input) => Effect.succeed(input.tools), prepareTurn: () => Effect.succeed(undefined) }),
   ),
   Layer.succeed(MCP.Service, fakeMcp()),
   Layer.succeed(Truncate.Service, fakeTruncate),

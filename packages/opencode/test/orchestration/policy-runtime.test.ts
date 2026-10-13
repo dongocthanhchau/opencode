@@ -127,3 +127,29 @@ test("cancelled task blocks subsequent turns and tool effects", async () => {
   )
   await expect(execute("ses_writer", "__turn__", {}, () => {})).rejects.toThrow()
 })
+
+test("archived session blocks provider turns and tool effects", async () => {
+  await runtime.runPromise(
+    Database.Service.use(({ db }) =>
+      db.run(sql`UPDATE session SET time_archived=1 WHERE id='ses_reader'`).pipe(Effect.orDie),
+    ),
+  )
+  let executed = false
+  for (const tool of ["__turn__", "read", "cvis_verify"]) {
+    await expect(
+      execute("ses_reader", tool, { filePath: path.join(root, "src", "allowed.ts") }, () => {
+        executed = true
+      }),
+    ).rejects.toThrow("Session is archived")
+  }
+  expect(executed).toBe(false)
+})
+
+test("retired session cannot bypass archive gate by losing its binding", async () => {
+  await runtime.runPromise(
+    Database.Service.use(({ db }) =>
+      db.run(sql`DELETE FROM cvis_session_binding WHERE session_id='ses_reader'`).pipe(Effect.orDie),
+    ),
+  )
+  await expect(execute("ses_reader", "__turn__", {}, () => {})).rejects.toThrow("Session is archived")
+})

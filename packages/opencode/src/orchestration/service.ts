@@ -1,7 +1,8 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { and, eq, gt, inArray, max } from "drizzle-orm"
+import { and, asc, eq, gt, inArray, isNull, lte, max, or } from "drizzle-orm"
 import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
+import { createBudget } from "./budget"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ProjectV2 } from "@opencode-ai/core/project"
@@ -13,13 +14,18 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
 import {
   CvisCheckTable,
   CvisEventTable,
+  CvisManagedProjectTable,
   CvisPromptTemplateTable,
   CvisMessageTable,
   CvisProjectGoalTable,
+  CvisScheduleTable,
   CvisSessionBindingTable,
   CvisTaskRunTable,
   CvisTaskTable,
+  ManagedProjectStatus,
+  ManagedProjectType,
 } from "@opencode-ai/core/orchestration/sql"
+import { ProjectTable } from "@opencode-ai/core/project/sql"
 import {
   BindingStatus,
   canTransitionBinding,
@@ -242,6 +248,65 @@ export interface Interface {
     cursor?: number
     limit?: number
   }) => Effect.Effect<{ id: string; type: string; entity: string; entityID: string; payload: unknown; time: number }[]>
+  readonly updateGoalBudget: (input: {
+    goalID: string
+    budgetTokens: number
+    expectedBudget: number | null
+    reason: string
+    actorSessionID: string
+  }) => Effect.Effect<void, NotFoundError | InvalidTransitionError | ConflictError>
+  readonly updateTaskBudget: (input: { taskID: string; maxTokens: number; expectedMaxTokens: number | null; reason: string; actorSessionID: string }) => Effect.Effect<void, NotFoundError | InvalidTransitionError | ConflictError>
+  readonly reviewReady: (input: { sessionID: string }) => Effect.Effect<boolean>
+  readonly registerManagedProject: (input: {
+    slug: string
+    type?: string
+    owner?: string
+    mission?: string
+    metadata?: Record<string, unknown>
+  }) => Effect.Effect<{ id: string }, InvalidTransitionError>
+  readonly getManagedProject: (input: {
+    id?: string
+    slug?: string
+  }) => Effect.Effect<typeof CvisManagedProjectTable.$inferSelect, NotFoundError | InvalidTransitionError>
+  readonly listManagedProjects: (input: {
+    status?: string
+  }) => Effect.Effect<(typeof CvisManagedProjectTable.$inferSelect)[], InvalidTransitionError>
+  readonly linkManagedProject: (input: {
+    id: string
+    nativeProjectID: string
+  }) => Effect.Effect<void, NotFoundError | InvalidTransitionError | ConflictError>
+  readonly setManagedProjectStatus: (input: {
+    id: string
+    status: string
+  }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
+  readonly registerSchedule: (input: {
+    managedProjectID: string
+    name: string
+    kind?: string
+    payload?: Record<string, unknown>
+    intervalSeconds?: number
+    nextDueAt?: number
+  }) => Effect.Effect<{ id: string }, NotFoundError | InvalidTransitionError>
+  readonly getSchedule: (input: {
+    id: string
+  }) => Effect.Effect<typeof CvisScheduleTable.$inferSelect, NotFoundError>
+  readonly listSchedules: (input: {
+    managedProjectID?: string
+  }) => Effect.Effect<(typeof CvisScheduleTable.$inferSelect)[]>
+  readonly setScheduleEnabled: (input: {
+    id: string
+    enabled: boolean
+  }) => Effect.Effect<void, NotFoundError>
+  readonly claimDueSchedule: (input: {
+    owner: string
+    leaseMs?: number
+    now?: number
+  }) => Effect.Effect<typeof CvisScheduleTable.$inferSelect | undefined, InvalidTransitionError>
+  readonly completeScheduleRun: (input: {
+    id: string
+    owner: string
+    status: string
+  }) => Effect.Effect<void, NotFoundError | InvalidTransitionError | ConflictError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/CvisOrchestration") {}
@@ -254,6 +319,12 @@ function isRole(role: string): role is Role {
   return (["manager", "researcher", "implementer", "verifier", "maintenance"] as readonly string[]).includes(role)
 }
 
+export function currentGoalTasks<T extends Pick<typeof CvisTaskTable.$inferSelect, "id" | "role" | "project_id" | "goal_id" | "revision" | "scope"> & { status?: string }>(tasks: T[]): T[] {
+  return tasks.filter((task) => !(task.role === "verifier" && task.scope?.review_task_id && typeof task.scope.review_revision === "number" &&
+    tasks.some((target) => target.id === task.scope?.review_task_id && target.project_id === task.project_id && target.goal_id === task.goal_id &&
+      (target.revision > (task.scope?.review_revision ?? Infinity) || (["failed", "cancelled"].includes(task.status ?? "") && target.status === "done" && tasks.some((review) => review.id !== task.id && review.role === "verifier" && review.status === "done" && review.project_id === task.project_id && review.goal_id === task.goal_id && review.scope?.review_task_id === target.id && review.scope.review_revision === target.revision))))))
+}
+
 function isMessageKind(kind: string): kind is MessageKind {
   return (
     ["assign", "progress", "question", "blocked", "result", "review", "cancel", "ack"] as readonly string[]
@@ -264,6 +335,7 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const budgetLedger = createBudget(db)
     const fs = yield* FSUtil.Service
     const sessions = yield* Session.Service
     const runState = yield* SessionRunState.Service
@@ -357,20 +429,7 @@ const layer = Layer.effect(
           .where(eq(CvisTaskTable.goal_id, row.id))
           .all()
           .pipe(Effect.orDie)
-        const required = tasks.filter(
-          (task) =>
-            !(
-              task.role === "verifier" &&
-              task.weight === 0 &&
-              task.scope?.review_task_id &&
-              typeof task.scope.review_revision === "number" &&
-              tasks.some(
-                (target) =>
-                  target.id === task.scope?.review_task_id &&
-                  target.revision > (task.scope?.review_revision ?? Infinity),
-              )
-            ),
-        )
+        const required = currentGoalTasks(tasks)
         if (!required.length || required.some((task) => task.status !== "done")) {
           return yield* new InvalidTransitionError({
             entity: "goal",
@@ -511,6 +570,7 @@ const layer = Layer.effect(
                 description: input.description ?? "",
                 role: input.role,
                 priority: input.priority ?? 0,
+                weight: input.role === "verifier" && (input.scope as { review_task_id?: string } | undefined)?.review_task_id ? 0 : 1,
                 status: "draft",
                 scope: input.scope ?? null,
                 acceptance,
@@ -694,6 +754,18 @@ const layer = Layer.effect(
       const sinfo = yield* sessions
         .get(SessionID.make(input.sessionID))
         .pipe(Effect.mapError(() => new NotFoundError({ entity: "session", id: input.sessionID })))
+      const sessionRow = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, sinfo.id))
+        .get()
+        .pipe(Effect.orDie)
+      if (!sessionRow || sessionRow.time_archived !== null)
+        return yield* new ConflictError({
+          entity: "session",
+          id: input.sessionID,
+          reason: "session is archived; explicitly unarchive before claiming",
+        })
       if (sinfo.projectID !== task.project_id) {
         return yield* new ConflictError({
           entity: "task",
@@ -761,6 +833,9 @@ const layer = Layer.effect(
       const outcome = yield* db
         .transaction((tx) =>
           Effect.gen(function* () {
+            const claimant = yield* tx.select().from(SessionTable).where(eq(SessionTable.id, sinfo.id)).get()
+            if (!claimant || claimant.time_archived !== null)
+              return yield* new ConflictError({ entity: "session", id: input.sessionID, reason: "session is archived" })
             const won = yield* tx
               .update(CvisTaskTable)
               .set({ status: "running" })
@@ -1143,13 +1218,9 @@ const layer = Layer.effect(
     })
 
     const taskSpend = Effect.fn("Cvis.taskSpend")(function* (taskID: string) {
-      const runs = yield* db
-        .select({ tokens: CvisTaskRunTable.tokens_used })
-        .from(CvisTaskRunTable)
-        .where(eq(CvisTaskRunTable.task_id, taskID))
-        .all()
-        .pipe(Effect.orDie)
-      return runs.reduce((sum, r) => sum + (r.tokens ?? 0), 0)
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, taskID)).get().pipe(Effect.orDie)
+      if (task) yield* budgetLedger.reconcile(task.project_id)
+      return yield* budgetLedger.spend({ taskID })
     })
 
     const goalSpend = Effect.fn("Cvis.goalSpend")(function* (goalID: string) {
@@ -1306,6 +1377,7 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       if (
         !verifier ||
+        verifier.time_archived !== null ||
         !actor ||
         actor.role !== "verifier" ||
         actor.status === "paused" ||
@@ -1392,13 +1464,8 @@ const layer = Layer.effect(
             from: filename,
             to: "artifact outside reviewer scope",
           })
-        const roots = (
-          task.scope?.read_paths?.length
-            ? task.scope.read_paths
-            : task.scope?.write_paths?.length
-              ? task.scope.write_paths
-              : [root]
-        ).map((r) => canonicalPath(path.resolve(root, r)))
+        const artifactRoots = [...(task.scope?.read_paths ?? []), ...(task.scope?.write_paths ?? [])]
+        const roots = (artifactRoots.length ? artifactRoots : [root]).map((r) => canonicalPath(path.resolve(root, r)))
         if (!pathAllowed(file, [root]) || !pathAllowed(file, roots))
           return yield* new InvalidTransitionError({
             entity: "check",
@@ -1434,6 +1501,14 @@ const layer = Layer.effect(
       yield* db
         .transaction((tx) =>
           Effect.gen(function* () {
+            const reviewer = yield* tx.select().from(SessionTable).where(eq(SessionTable.id, verifier.id)).get()
+            if (!reviewer || reviewer.time_archived !== null)
+              return yield* new InvalidTransitionError({
+                entity: "check",
+                id: input.checkID,
+                from: "archived",
+                to: "verifier is no longer active",
+              })
             const current = yield* tx.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, task.id)).get()
             if (
               !current ||
@@ -1539,7 +1614,7 @@ const layer = Layer.effect(
         .where(eq(CvisTaskTable.goal_id, input.goalID))
         .all()
         .pipe(Effect.orDie)
-      const visible = tasks
+      const visible = currentGoalTasks(tasks)
       const entries: { id: string; title: string; status: string; percent: number }[] = []
       for (const task of visible) {
         const progress = yield* taskProgress({ taskID: task.id })
@@ -1630,14 +1705,13 @@ const layer = Layer.effect(
             for (const review of reviews) {
               if (
                 review.role !== "verifier" ||
-                review.weight !== 0 ||
                 review.scope?.review_task_id !== task.id ||
                 ["done", "cancelled"].includes(review.status)
               )
                 continue
               yield* tx
                 .update(CvisTaskTable)
-                .set({ status: "cancelled", active_run_id: null, assigned_session: null })
+                .set({ status: "cancelled", active_run_id: null, assigned_session: null, weight: 0 })
                 .where(eq(CvisTaskTable.id, review.id))
                 .run()
               yield* tx
@@ -2052,6 +2126,15 @@ const layer = Layer.effect(
 
     const reuseCheck = Effect.fn("Cvis.reuseCheck")(function* (input: { sessionID: string; taskID: string }) {
       const reasons: string[] = []
+      const session = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, SessionID.make(input.sessionID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!session) return yield* new NotFoundError({ entity: "session", id: input.sessionID })
+      if (session.time_archived !== null) reasons.push("session is archived")
+      if (yield* runState.isRunning(session.id)) reasons.push("session is executing")
       const binding = yield* db
         .select()
         .from(CvisSessionBindingTable)
@@ -2065,20 +2148,12 @@ const layer = Layer.effect(
         .get()
         .pipe(Effect.orDie)
       if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      if (session.project_id !== task.project_id) reasons.push("different project")
       if (binding) {
         if (binding.status !== "idle") reasons.push(`binding is ${binding.status}`)
         if (binding.project_id !== task.project_id) reasons.push("different project")
         if (binding.role !== task.role) reasons.push(`role mismatch: ${binding.role} vs ${task.role}`)
         if (binding.task_id != null && binding.task_id !== input.taskID) reasons.push("unfinished previous task")
-      } else {
-        const session = yield* db
-          .select()
-          .from(SessionTable)
-          .where(eq(SessionTable.id, SessionID.make(input.sessionID)))
-          .get()
-          .pipe(Effect.orDie)
-        if (!session) return yield* new NotFoundError({ entity: "session", id: input.sessionID })
-        if (session.project_id !== task.project_id) reasons.push("different project")
       }
       const open = yield* db
         .select({ status: CvisTaskRunTable.status })
@@ -2369,6 +2444,13 @@ const layer = Layer.effect(
         .get()
         .pipe(Effect.orDie)
       if (!session) return yield* new NotFoundError({ entity: "session", id: input.sessionID })
+      if (session.time_archived !== null)
+        return yield* new InvalidTransitionError({
+          entity: "binding",
+          id: input.sessionID,
+          from: "archived",
+          to: "explicit unarchive required",
+        })
       if (session.project_id !== input.projectID)
         return yield* new InvalidTransitionError({
           entity: "binding",
@@ -2414,6 +2496,14 @@ const layer = Layer.effect(
       yield* db
         .transaction((tx) =>
           Effect.gen(function* () {
+            const activeSession = yield* tx.select().from(SessionTable).where(eq(SessionTable.id, session.id)).get()
+            if (!activeSession || activeSession.time_archived !== null)
+              return yield* new InvalidTransitionError({
+                entity: "binding",
+                id: input.sessionID,
+                from: "archived",
+                to: "binding",
+              })
             const observed = yield* tx
               .select()
               .from(CvisSessionBindingTable)
@@ -2435,13 +2525,55 @@ const layer = Layer.effect(
                 .from(CvisSessionBindingTable)
                 .where(eq(CvisSessionBindingTable.project_id, input.projectID))
                 .all()
-              if (managers.some((item) => item.role === "manager" && item.session_id !== input.sessionID))
-                return yield* new InvalidTransitionError({
+              for (const manager of managers.filter(
+                (item) => item.role === "manager" && item.session_id !== input.sessionID,
+              )) {
+                const oldSession = yield* tx
+                  .select()
+                  .from(SessionTable)
+                  .where(eq(SessionTable.id, SessionID.make(manager.session_id)))
+                  .get()
+                const runs = yield* tx
+                  .select()
+                  .from(CvisTaskRunTable)
+                  .where(eq(CvisTaskRunTable.session_id, manager.session_id))
+                  .all()
+                if (
+                  !oldSession ||
+                  oldSession.time_archived === null ||
+                  manager.task_id !== null ||
+                  !["idle", "paused"].includes(manager.status) ||
+                  runs.some((run) => ["pending", "running", "verifying"].includes(run.status)) ||
+                  (yield* runState.isRunning(SessionID.make(manager.session_id)))
+                )
+                  return yield* new InvalidTransitionError({
+                    entity: "binding",
+                    id: input.sessionID,
+                    from: "",
+                    to: "project already has an active manager",
+                  })
+                yield* tx
+                  .delete(CvisSessionBindingTable)
+                  .where(eq(CvisSessionBindingTable.session_id, manager.session_id))
+                  .run()
+                yield* tx
+                  .update(CvisSessionBindingTable)
+                  .set({ manager_session: input.sessionID })
+                  .where(
+                    and(
+                      eq(CvisSessionBindingTable.project_id, input.projectID),
+                      eq(CvisSessionBindingTable.manager_session, manager.session_id),
+                    ),
+                  )
+                  .run()
+                yield* recordEvent(tx, {
+                  projectID: input.projectID,
                   entity: "binding",
-                  id: input.sessionID,
-                  from: "",
-                  to: "project already has a manager",
+                  entityID: manager.session_id,
+                  type: "manager.replaced",
+                  payload: { replacementSessionID: input.sessionID },
                 })
+              }
             }
             yield* tx
               .insert(CvisSessionBindingTable)
@@ -2546,6 +2678,7 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       if (
         !sender ||
+        sender.time_archived !== null ||
         !senderBinding ||
         sender.project_id !== input.projectID ||
         senderBinding.project_id !== input.projectID ||
@@ -2780,6 +2913,403 @@ const layer = Layer.effect(
       }))
     })
 
+    const updateGoalBudget = Effect.fn("Cvis.updateGoalBudget")(function* (input: {
+      goalID: string
+      budgetTokens: number
+      expectedBudget: number | null
+      reason: string
+      actorSessionID: string
+    }) {
+      if (!Number.isInteger(input.budgetTokens) || input.budgetTokens <= 0 || !Number.isFinite(input.budgetTokens)) {
+        return yield* new InvalidTransitionError({
+          entity: "goal",
+          id: input.goalID,
+          from: "budgetTokens",
+          to: "must be a positive finite integer",
+        })
+      }
+      const trimmedReason = input.reason.trim()
+      if (!trimmedReason) {
+        return yield* new InvalidTransitionError({
+          entity: "goal",
+          id: input.goalID,
+          from: "reason",
+          to: "must be non-empty",
+        })
+      }
+      const actorSession = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, SessionID.make(input.actorSessionID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!actorSession) return yield* new NotFoundError({ entity: "session", id: input.actorSessionID })
+      if (actorSession.time_archived !== null) {
+        return yield* new InvalidTransitionError({
+          entity: "session",
+          id: input.actorSessionID,
+          from: "archived",
+          to: "operator not allowed",
+        })
+      }
+      const actorBinding = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.actorSessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (
+        !actorBinding ||
+        actorBinding.role !== "manager" ||
+        (actorBinding.status !== "idle" && actorBinding.status !== "active")
+      ) {
+        return yield* new InvalidTransitionError({
+          entity: "binding",
+          id: input.actorSessionID,
+          from: actorBinding?.status ?? "unbound",
+          to: "active or idle manager required",
+        })
+      }
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            const goal = yield* tx
+              .select()
+              .from(CvisProjectGoalTable)
+              .where(eq(CvisProjectGoalTable.id, input.goalID))
+              .get()
+            if (!goal) return yield* new NotFoundError({ entity: "goal", id: input.goalID })
+            if (goal.project_id !== actorBinding.project_id) {
+              return yield* new ConflictError({
+                entity: "goal",
+                id: input.goalID,
+                reason: "actor session belongs to a different project",
+              })
+            }
+            const current = goal.budget_tokens ?? null
+            if (current !== input.expectedBudget) {
+              return yield* new ConflictError({
+                entity: "goal",
+                id: input.goalID,
+                reason: `CAS mismatch: expected ${input.expectedBudget} but current cap is ${current}`,
+              })
+            }
+            yield* tx
+              .update(CvisProjectGoalTable)
+              .set({ budget_tokens: input.budgetTokens })
+              .where(eq(CvisProjectGoalTable.id, input.goalID))
+              .run()
+            yield* recordEvent(tx, {
+              projectID: goal.project_id,
+              entity: "goal",
+              entityID: input.goalID,
+              type: "goal.budget.updated",
+              payload: {
+                old_cap: current,
+                new_cap: input.budgetTokens,
+                reason: trimmedReason,
+                actor: input.actorSessionID,
+              },
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+    })
+
+    const updateTaskBudget = Effect.fn("Cvis.updateTaskBudget")(function* (input: { taskID: string; maxTokens: number; expectedMaxTokens: number | null; reason: string; actorSessionID: string }) {
+      if (!Number.isSafeInteger(input.maxTokens) || input.maxTokens <= 0 || !input.reason.trim())
+        return yield* new InvalidTransitionError({ entity: "task", id: input.taskID, from: "budget", to: "positive integer and reason required" })
+      yield* db.transaction((tx) => Effect.gen(function* () {
+        const task = yield* tx.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get()
+        if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+        const session = yield* tx.select().from(SessionTable).where(eq(SessionTable.id, SessionID.make(input.actorSessionID))).get()
+        const actor = yield* tx.select().from(CvisSessionBindingTable).where(eq(CvisSessionBindingTable.session_id, input.actorSessionID)).get()
+        if (!session || session.time_archived !== null || !actor || actor.role !== "manager" || actor.status !== "idle" || actor.project_id !== task.project_id || session.project_id !== task.project_id)
+          return yield* new ConflictError({ entity: "task", id: task.id, reason: "same-project idle manager required" })
+        const old = task.scope?.max_tokens ?? null
+        if (old !== input.expectedMaxTokens) return yield* new ConflictError({ entity: "task", id: task.id, reason: "budget CAS mismatch" })
+        yield* tx.update(CvisTaskTable).set({ scope: { ...task.scope, max_tokens: input.maxTokens } }).where(eq(CvisTaskTable.id, task.id)).run()
+        yield* recordEvent(tx, { projectID: task.project_id, entity: "task", entityID: task.id, type: "task.budget.updated", payload: { oldMaxTokens: old, newMaxTokens: input.maxTokens, reason: input.reason.trim(), actor: input.actorSessionID } })
+      }), { behavior: "immediate" }).pipe(Effect.orDie)
+    })
+
+    const reviewReady = Effect.fn("Cvis.reviewReady")(function* (input: { sessionID: string }) {
+      const actor = yield* db.select().from(CvisSessionBindingTable).where(eq(CvisSessionBindingTable.session_id, input.sessionID)).get().pipe(Effect.orDie)
+      if (!actor || actor.role !== "verifier" || !actor.task_id || actor.status !== "busy") return false
+      const job = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, actor.task_id)).get().pipe(Effect.orDie)
+      if (!job?.scope?.review_task_id || job.status !== "running") return false
+      const target = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, job.scope.review_task_id)).get().pipe(Effect.orDie)
+      if (!target || target.project_id !== job.project_id || target.goal_id !== job.goal_id || target.revision !== job.scope.review_revision) return false
+      const gate = yield* doneGate(target.id)
+      if (!gate.ok) return false
+      const checks = yield* db.select().from(CvisCheckTable).where(eq(CvisCheckTable.task_id, target.id)).all().pipe(Effect.orDie)
+      return checks.length > 0 && checks.every((check) => check.verifier_session === input.sessionID && check.verdict === "pass" && check.revision === target.revision && check.run_id === target.active_run_id)
+    })
+
+    const managedTransitions: Record<string, string[]> = {
+      planning: ["ready", "archived"],
+      ready: ["active", "archived"],
+      active: ["paused", "completed", "archived"],
+      paused: ["active", "archived"],
+      completed: [],
+      archived: [],
+    }
+
+    const registerManagedProject = Effect.fn("Cvis.registerManagedProject")(function* (input: {
+      slug: string
+      type?: string
+      owner?: string
+      mission?: string
+      metadata?: Record<string, unknown>
+    }) {
+      if (!/^[a-z][a-z0-9-]{1,47}$/.test(input.slug))
+        return yield* new InvalidTransitionError({ entity: "managed-project", id: input.slug, from: "", to: "slug must match [a-z][a-z0-9-]{1,47}" })
+      const type = input.type ?? "work"
+      if (!(ManagedProjectType as readonly string[]).includes(type))
+        return yield* new InvalidTransitionError({ entity: "managed-project", id: input.slug, from: "", to: `unknown type: ${type}` })
+      const existing = yield* db
+        .select()
+        .from(CvisManagedProjectTable)
+        .where(eq(CvisManagedProjectTable.slug, input.slug))
+        .get()
+        .pipe(Effect.orDie)
+      if (existing) return { id: existing.id }
+      const id = newID("mp")
+      yield* db
+        .insert(CvisManagedProjectTable)
+        .values({
+          id,
+          slug: input.slug,
+          type,
+          owner: input.owner ?? "",
+          mission: input.mission ?? "",
+          status: "planning",
+          metadata: input.metadata ?? null,
+        })
+        .run()
+        .pipe(Effect.orDie)
+      return { id }
+    })
+
+    const getManagedProject = Effect.fn("Cvis.getManagedProject")(function* (input: { id?: string; slug?: string }) {
+      const row = yield* (input.id
+        ? db.select().from(CvisManagedProjectTable).where(eq(CvisManagedProjectTable.id, input.id)).get()
+        : input.slug
+          ? db.select().from(CvisManagedProjectTable).where(eq(CvisManagedProjectTable.slug, input.slug)).get()
+          : Effect.succeed(undefined)).pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ entity: "managed-project", id: input.id ?? input.slug ?? "" })
+      return row
+    })
+
+    const listManagedProjects = Effect.fn("Cvis.listManagedProjects")(function* (input: { status?: string }) {
+      if (input.status !== undefined && !(ManagedProjectStatus as readonly string[]).includes(input.status))
+        return yield* new InvalidTransitionError({ entity: "managed-project", id: "", from: "", to: `unknown status: ${input.status}` })
+      if (input.status === undefined) return yield* db.select().from(CvisManagedProjectTable).all().pipe(Effect.orDie)
+      return yield* db
+        .select()
+        .from(CvisManagedProjectTable)
+        .where(eq(CvisManagedProjectTable.status, input.status))
+        .all()
+        .pipe(Effect.orDie)
+    })
+
+    const linkManagedProject = Effect.fn("Cvis.linkManagedProject")(function* (input: { id: string; nativeProjectID: string }) {
+      const managed = yield* db
+        .select()
+        .from(CvisManagedProjectTable)
+        .where(eq(CvisManagedProjectTable.id, input.id))
+        .get()
+        .pipe(Effect.orDie)
+      if (!managed) return yield* new NotFoundError({ entity: "managed-project", id: input.id })
+      const native = yield* db
+        .select()
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, ProjectV2.ID.make(input.nativeProjectID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!native)
+        return yield* new InvalidTransitionError({ entity: "managed-project", id: input.id, from: "", to: "native project not found" })
+      if (managed.native_project_id === input.nativeProjectID) return
+      const occupant = yield* db
+        .select()
+        .from(CvisManagedProjectTable)
+        .where(eq(CvisManagedProjectTable.native_project_id, input.nativeProjectID))
+        .get()
+        .pipe(Effect.orDie)
+      if (occupant)
+        return yield* new ConflictError({ entity: "managed-project", id: input.id, reason: `native project already linked to ${occupant.slug}` })
+      yield* db
+        .update(CvisManagedProjectTable)
+        .set({ native_project_id: input.nativeProjectID })
+        .where(eq(CvisManagedProjectTable.id, input.id))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const setManagedProjectStatus = Effect.fn("Cvis.setManagedProjectStatus")(function* (input: { id: string; status: string }) {
+      if (!(ManagedProjectStatus as readonly string[]).includes(input.status))
+        return yield* new InvalidTransitionError({ entity: "managed-project", id: input.id, from: "", to: `unknown status: ${input.status}` })
+      const managed = yield* db
+        .select()
+        .from(CvisManagedProjectTable)
+        .where(eq(CvisManagedProjectTable.id, input.id))
+        .get()
+        .pipe(Effect.orDie)
+      if (!managed) return yield* new NotFoundError({ entity: "managed-project", id: input.id })
+      if (!(managedTransitions[managed.status] ?? []).includes(input.status))
+        return yield* new InvalidTransitionError({ entity: "managed-project", id: input.id, from: managed.status, to: input.status })
+      yield* db
+        .update(CvisManagedProjectTable)
+        .set({ status: input.status })
+        .where(eq(CvisManagedProjectTable.id, input.id))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const registerSchedule = Effect.fn("Cvis.registerSchedule")(function* (input: {
+      managedProjectID: string
+      name: string
+      kind?: string
+      payload?: Record<string, unknown>
+      intervalSeconds?: number
+      nextDueAt?: number
+    }) {
+      const managed = yield* db
+        .select()
+        .from(CvisManagedProjectTable)
+        .where(eq(CvisManagedProjectTable.id, input.managedProjectID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!managed) return yield* new NotFoundError({ entity: "managed-project", id: input.managedProjectID })
+      if (!/^[a-z][a-z0-9-]{1,79}$/.test(input.name))
+        return yield* new InvalidTransitionError({ entity: "schedule", id: input.name, from: "", to: "name must match [a-z][a-z0-9-]{1,79}" })
+      if (
+        input.intervalSeconds !== undefined &&
+        (!Number.isSafeInteger(input.intervalSeconds) || input.intervalSeconds <= 0)
+      )
+        return yield* new InvalidTransitionError({ entity: "schedule", id: input.name, from: "", to: "interval must be a positive integer number of seconds" })
+      const existing = yield* db
+        .select()
+        .from(CvisScheduleTable)
+        .where(
+          and(
+            eq(CvisScheduleTable.managed_project_id, input.managedProjectID),
+            eq(CvisScheduleTable.name, input.name),
+          ),
+        )
+        .get()
+        .pipe(Effect.orDie)
+      if (existing) return { id: existing.id }
+      const id = newID("sch")
+      yield* db
+        .insert(CvisScheduleTable)
+        .values({
+          id,
+          managed_project_id: input.managedProjectID,
+          name: input.name,
+          kind: input.kind?.trim() ? input.kind.trim().slice(0, 40) : "health",
+          payload: input.payload ?? null,
+          interval_seconds: input.intervalSeconds ?? null,
+          next_due_at: input.nextDueAt ?? Date.now(),
+        })
+        .run()
+        .pipe(Effect.orDie)
+      return { id }
+    })
+
+    const getSchedule = Effect.fn("Cvis.getSchedule")(function* (input: { id: string }) {
+      const row = yield* db.select().from(CvisScheduleTable).where(eq(CvisScheduleTable.id, input.id)).get().pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ entity: "schedule", id: input.id })
+      return row
+    })
+
+    const listSchedules = Effect.fn("Cvis.listSchedules")(function* (input: { managedProjectID?: string }) {
+      if (input.managedProjectID === undefined)
+        return yield* db.select().from(CvisScheduleTable).all().pipe(Effect.orDie)
+      return yield* db
+        .select()
+        .from(CvisScheduleTable)
+        .where(eq(CvisScheduleTable.managed_project_id, input.managedProjectID))
+        .all()
+        .pipe(Effect.orDie)
+    })
+
+    const setScheduleEnabled = Effect.fn("Cvis.setScheduleEnabled")(function* (input: { id: string; enabled: boolean }) {
+      const row = yield* db.select().from(CvisScheduleTable).where(eq(CvisScheduleTable.id, input.id)).get().pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ entity: "schedule", id: input.id })
+      yield* db
+        .update(CvisScheduleTable)
+        .set({ enabled: input.enabled ? 1 : 0 })
+        .where(eq(CvisScheduleTable.id, input.id))
+        .run()
+        .pipe(Effect.orDie)
+    })
+
+    const claimDueSchedule = Effect.fn("Cvis.claimDueSchedule")(function* (input: { owner: string; leaseMs?: number; now?: number }) {
+      if (!input.owner.trim())
+        return yield* new InvalidTransitionError({ entity: "schedule", id: "", from: "", to: "owner required" })
+      const now = input.now ?? Date.now()
+      const leaseMs = input.leaseMs ?? 300_000
+      if (!Number.isSafeInteger(leaseMs) || leaseMs <= 0)
+        return yield* new InvalidTransitionError({ entity: "schedule", id: "", from: "", to: "lease must be a positive integer number of milliseconds" })
+      return yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            const due = yield* tx
+              .select()
+              .from(CvisScheduleTable)
+              .where(and(eq(CvisScheduleTable.enabled, 1), lte(CvisScheduleTable.next_due_at, now)))
+              .orderBy(asc(CvisScheduleTable.next_due_at), asc(CvisScheduleTable.id))
+              .all()
+            const candidate = due.find((row) => row.lease_expires == null || row.lease_expires <= now)
+            if (!candidate) return undefined
+            const claimed = yield* tx
+              .update(CvisScheduleTable)
+              .set({ lease_owner: input.owner, lease_expires: now + leaseMs })
+              .where(
+                and(
+                  eq(CvisScheduleTable.id, candidate.id),
+                  or(isNull(CvisScheduleTable.lease_expires), lte(CvisScheduleTable.lease_expires, now)),
+                  eq(CvisScheduleTable.enabled, 1),
+                ),
+              )
+              .returning()
+              .all()
+            return claimed[0]
+          }),
+        )
+        .pipe(Effect.orDie)
+    })
+
+    const completeScheduleRun = Effect.fn("Cvis.completeScheduleRun")(function* (input: { id: string; owner: string; status: string }) {
+      if (input.status !== "ok" && input.status !== "failed")
+        return yield* new InvalidTransitionError({ entity: "schedule", id: input.id, from: "", to: "status must be ok or failed" })
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            const row = yield* tx.select().from(CvisScheduleTable).where(eq(CvisScheduleTable.id, input.id)).get()
+            if (!row) return yield* new NotFoundError({ entity: "schedule", id: input.id })
+            if (row.lease_owner == null || row.lease_owner !== input.owner)
+              return yield* new ConflictError({ entity: "schedule", id: input.id, reason: "lease held by another owner or not claimed" })
+            const now = Date.now()
+            yield* tx
+              .update(CvisScheduleTable)
+              .set({
+                lease_owner: null,
+                lease_expires: null,
+                last_status: input.status,
+                last_run_at: now,
+                consecutive_failures: input.status === "failed" ? row.consecutive_failures + 1 : 0,
+                next_due_at: row.interval_seconds != null ? now + row.interval_seconds : row.next_due_at,
+                enabled: row.interval_seconds != null ? row.enabled : 0,
+              })
+              .where(eq(CvisScheduleTable.id, input.id))
+              .run()
+          }),
+        )
+        .pipe(Effect.orDie)
+    })
+
     return Service.of({
       buildRuleset,
       projectSnapshot,
@@ -2818,6 +3348,20 @@ const layer = Layer.effect(
       sendMessage,
       ackMessage,
       listEvents,
+      updateGoalBudget,
+      updateTaskBudget,
+      reviewReady,
+      registerManagedProject,
+      getManagedProject,
+      listManagedProjects,
+      linkManagedProject,
+      setManagedProjectStatus,
+      registerSchedule,
+      getSchedule,
+      listSchedules,
+      setScheduleEnabled,
+      claimDueSchedule,
+      completeScheduleRun,
     })
   }),
 )

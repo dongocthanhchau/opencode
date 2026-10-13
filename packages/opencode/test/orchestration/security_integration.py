@@ -215,6 +215,23 @@ rc,out = cli(db,"cvis","task-create","--project","other-p","--goal","goal_review
              "--title","Wrong project task","--role","researcher")
 check("Task rejects project goal owned by another project",rc!=0,{"rc":rc,"output":out})
 
+db,c = case("archived-verifier")
+artifact=ROOT/"review-p"/"src"/"receipt.ts"
+artifact.parent.mkdir(exist_ok=True)
+artifact.write_text("export const value = 42\n")
+task(c,acceptance=CHECKS,scope={"read_paths":["src"]})
+c.execute("UPDATE cvis_task SET active_run_id='review_run',attempt=1 WHERE id='task_review'")
+c.execute("INSERT INTO cvis_task_run(id,task_id,session_id,attempt,revision,status,time_created,time_updated) VALUES('review_run','task_review','ses_worker',1,1,'verifying',?,?)",(NOW,NOW))
+c.execute("INSERT INTO cvis_session_binding(session_id,project_id,role,status,time_created,time_updated) VALUES('ses_verifier','review-p','verifier','idle',?,?)",(NOW,NOW))
+c.commit()
+evidence=json.dumps({"files":[str(artifact)],"conclusion":"Read actual artifact"})
+rc,out=cli(db,"cvis","check-verify","task_review","tests","--session","ses_verifier","--verdict","pass","--evidence",evidence)
+check("Active independent verifier can record actual artifact receipt",rc==0,{"rc":rc,"output":out})
+c.execute("UPDATE session SET time_archived=? WHERE id='ses_verifier'",(NOW,))
+c.commit()
+rc,out=cli(db,"cvis","check-verify","task_review","tests","--session","ses_verifier","--verdict","fail","--evidence",evidence)
+check("Archived verifier cannot overwrite a check through direct CLI",rc!=0 and c.execute("SELECT verdict FROM cvis_check WHERE task_id='task_review'").fetchone()[0]=="pass",{"rc":rc,"output":out})
+
 counts = {"pass":sum(r["pass"] for r in RESULTS),"fail":sum(not r["pass"] for r in RESULTS),"total":len(RESULTS)}
 (ROOT/"results.json").write_text(json.dumps(RESULTS,ensure_ascii=False,indent=2))
 print("AUDIT_ROOT",ROOT)

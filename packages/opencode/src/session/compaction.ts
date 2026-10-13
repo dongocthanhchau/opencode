@@ -554,7 +554,16 @@ const layer = Layer.effect(
       if (processor.message.error) return "stop"
       if (result === "continue") {
         yield* events.publish(Event.Compacted, { sessionID: input.sessionID })
-        yield* Effect.forkDetach(Effect.ignore(memoryCapture.capture({ sessionID: input.sessionID })))
+        // Durable capture: record a job row first so a crashed or failed
+        // capture stays visible and retryable, then run it inline.
+        yield* Effect.forkDetach(
+          Effect.ignore(
+            Effect.gen(function* () {
+              const job = yield* memoryCapture.enqueueCaptureJob({ sessionID: input.sessionID })
+              yield* memoryCapture.runCaptureJobOnce({ owner: `compaction:${job.id}` })
+            }),
+          ),
+        )
       }
       return result
     })

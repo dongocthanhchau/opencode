@@ -1245,6 +1245,7 @@ export type Error = ModelNotFoundError | InitError | NoProvidersError | NoModels
 
 export interface Interface {
   readonly list: () => Effect.Effect<Record<ProviderV2.ID, Info>>
+  readonly routingModels?: () => Effect.Effect<Model[]>
   readonly getProvider: (providerID: ProviderV2.ID) => Effect.Effect<Info>
   readonly getModel: (providerID: ProviderV2.ID, modelID: ModelV2.ID) => Effect.Effect<Model, ModelNotFoundError>
   readonly getLanguage: (model: Model) => Effect.Effect<LanguageModelV3, ModelNotFoundError>
@@ -1781,6 +1782,35 @@ const layer = Layer.effect(
     )
 
     const list = Effect.fn("Provider.list")(() => InstanceState.use(state, (s) => s.providers))
+    const routingModels = Effect.fn("Provider.routingModels")(function* () {
+      const s = yield* InstanceState.get(state)
+      const cfg = yield* config.get()
+      const catalog = yield* modelsDevSvc.get()
+      const id = ProviderV2.ID.make("opencode")
+      const active = s.providers[id]
+      if (
+        active &&
+        catalog.opencode &&
+        !cfg.disabled_providers?.includes(id) &&
+        (!cfg.enabled_providers || cfg.enabled_providers.includes(id))
+      ) {
+        const fresh = fromModelsDevProvider(catalog.opencode)
+        const policy = cfg.provider?.[id]
+        const free = Object.values(fresh.models).filter(
+          (model) =>
+            model.cost.input === 0 &&
+            model.cost.output === 0 &&
+            model.status !== "deprecated" &&
+            (model.status !== "alpha" || runtimeFlags.enableExperimentalModels) &&
+            !policy?.blacklist?.includes(model.id) &&
+            (!policy?.whitelist || policy.whitelist.includes(model.id)),
+        )
+        for (const [key, model] of Object.entries(active.models))
+          if (model.cost.input === 0 && model.cost.output === 0 && !policy?.models?.[key]) delete active.models[key]
+        for (const model of free) if (!policy?.models?.[model.id]) active.models[model.id] = model
+      }
+      return Object.values(s.providers).flatMap((provider) => Object.values(provider.models))
+    })
 
     async function resolveSDK(model: Model, s: State, envs: Record<string, string | undefined>) {
       try {
@@ -2062,7 +2092,7 @@ const layer = Layer.effect(
       }
     })
 
-    return Service.of({ list, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
+    return Service.of({ list, routingModels, getProvider, getModel, getLanguage, closest, getSmallModel, defaultModel })
   }),
 )
 

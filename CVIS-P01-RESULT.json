@@ -1,0 +1,88 @@
+{
+  "status": "operator-verified implementation; independent P0 review pending",
+  "tests": [
+    {
+      "suite": "unit/runtime",
+      "pass": 83
+    },
+    {
+      "suite": "bootstrap HTTP/provider",
+      "pass": 15,
+      "root": "/tmp/cvis-p01-http-u28651d1"
+    },
+    {
+      "suite": "HTTP faults",
+      "pass": 27,
+      "root": "/tmp/cvis-http-faults-xiuo590t"
+    },
+    {
+      "suite": "security",
+      "pass": 20,
+      "root": "/tmp/cvis-orch-review-xx12h8mw"
+    },
+    {
+      "suite": "memory integrity",
+      "pass": 33,
+      "root": "/tmp/cvis-management-audit-lk1tb47w"
+    },
+    {
+      "suite": "real Claude pilot",
+      "pass": 27,
+      "root": "/tmp/cvis-live-pilot-3_dyf2r8"
+    }
+  ],
+  "typechecks": [
+    "core",
+    "opencode"
+  ],
+  "files": [
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/orchestration/control.ts",
+      "sha256": "394205196b698f9686c66071fee827fd36cf34dcd5ef8bb3607130df5d0eb4f3"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/orchestration/control-tool.ts",
+      "sha256": "58687d7ba9eeff132e90ac181a396de509195aedb9993ef0cc844b6c89760d3f"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/orchestration/service.ts",
+      "sha256": "fae52dfbe6fc621dd1abe247ab05418ad203caa5be38c59b7c8e0caa307d389d"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/orchestration/policy.ts",
+      "sha256": "cafe6e429f93d21f14176aa5a554e2904344b466158b96b34b563ec0200993fc"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/orchestration/harness.ts",
+      "sha256": "1b1d634366ced67a144707a45e2912771eaec59429549659a5350a20de973b25"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/orchestration/usage.ts",
+      "sha256": "79d7198572ad0112817e12638d26a5e6dcff1a1c82a3c533fb18cbc7eb19030d"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/orchestration/budget.ts",
+      "sha256": "0fafd215cc9d83bda95a346f6172555f46242a4227f9366fb8d49c80407bdf08"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/session/prompt.ts",
+      "sha256": "9eb41f21aead68867f38d7fdd9a2693b91293ed8173f0700fd3c8a8b67d5c641"
+    },
+    {
+      "path": "/home/chad/opencode-fork/packages/opencode/src/session/llm.ts",
+      "sha256": "07e4fef9d588e0e12b621078c528ee8e35bf84893dcc92594cae26e70b125de0"
+    }
+  ],
+  "interventions": [
+    "operator executed tests/build because managed shell/executor unavailable",
+    "fixed bootstrap Effect API/template errors after task budget blocked agent retry",
+    "rejected agent whole-module rewrites and restored pre-task source",
+    "integrated live budget helper preserving existing APIs and replaced invalid helper tests with real DB regressions",
+    "empty provider deliveries fail explicitly; Claude used for reliable real pilot"
+  ],
+  "limits": [
+    "input reservations are estimates, not exact provider billing guarantees",
+    "source changes remain uncommitted",
+    "P1-P10 not implemented"
+  ]
+}

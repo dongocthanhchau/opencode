@@ -2,7 +2,7 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { Image } from "@/image/image"
 import { SessionV1 } from "@opencode-ai/core/v1/session"
-import { Cause, Deferred, Effect, Exit, Layer, Context, Scope, Schema } from "effect"
+import { Cause, Deferred, Effect, Exit, Layer, Context, Scope, Schema, Schedule } from "effect"
 import * as Stream from "effect/Stream"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
@@ -657,6 +657,7 @@ const layer = Layer.effect(
               Stream.tap((event) => handleEvent(event)),
               Stream.takeUntil(() => ctx.needsCompaction),
               Stream.runDrain,
+              (effect) => (streamInput.routeManaged ? effect.pipe(Effect.timeout("60 seconds")) : effect),
             )
           }).pipe(
             Effect.onInterrupt(() =>
@@ -672,19 +673,21 @@ const layer = Layer.effect(
               (cause) => Effect.fail(Cause.squash(cause)),
             ),
             Effect.retry(
-              SessionRetry.policy({
-                provider: input.model.providerID,
-                parse,
-                set: (info) => {
-                  return status.set(ctx.sessionID, {
-                    type: "retry",
-                    attempt: info.attempt,
-                    message: info.message,
-                    action: info.action,
-                    next: info.next,
-                  })
-                },
-              }),
+              streamInput.routeManaged
+                ? Schedule.recurs(0)
+                : SessionRetry.policy({
+                    provider: input.model.providerID,
+                    parse,
+                    set: (info) => {
+                      return status.set(ctx.sessionID, {
+                        type: "retry",
+                        attempt: info.attempt,
+                        message: info.message,
+                        action: info.action,
+                        next: info.next,
+                      })
+                    },
+                  }),
             ),
             Effect.catch(halt),
             Effect.ensuring(cleanup()),

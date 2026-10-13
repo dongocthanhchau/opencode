@@ -38,6 +38,16 @@ import { Tool } from "@/tool/tool"
 import { Permission } from "@/permission"
 import { SessionStatus } from "./status"
 import { LLM } from "./llm"
+import {
+  routingEnabled,
+  routeCandidates,
+  modelKey,
+  markRouteFailure,
+  retryableRoute,
+  safeToReroute,
+  MAX_ROUTE_ATTEMPTS,
+} from "@/provider/free-routing"
+import { estimate } from "@/util/token"
 import { Shell } from "@opencode-ai/core/shell"
 import { ShellID } from "@/tool/shell/id"
 import { FSUtil } from "@opencode-ai/core/fs-util"
@@ -814,6 +824,22 @@ const layer = Layer.effect(
             case "file:": {
               yield* Effect.logInfo("file", { mime: part.mime })
               const filepath = fileURLToPath(part.url)
+              const admitted = yield* orchestrationPolicy
+                .authorize({ sessionID: input.sessionID, tool: "read", args: { filePath: filepath } })
+                .pipe(
+                  Effect.as(true),
+                  Effect.catchTag("CvisPolicyDenied", () => Effect.succeed(false)),
+                )
+              if (!admitted)
+                return [
+                  {
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    synthetic: true,
+                    text: `File attachment blocked: ${filepath} is outside task scope`,
+                  },
+                ]
               const mime = (yield* fsys.isDir(filepath)) ? "application/x-directory" : part.mime
 
               const { read } = yield* registry.named()
@@ -1089,6 +1115,10 @@ const layer = Layer.effect(
         const ctx = yield* InstanceState.context
         let structured: unknown
         let step = 0
+        let routingRetry = false
+        let routeModel: Provider.Model | undefined
+        const attemptedRoutes = new Set<string>()
+        let routeUserID = ""
         const session = yield* sessions.get(sessionID).pipe(Effect.orDie)
 
         while (true) {
@@ -1115,6 +1145,7 @@ const layer = Layer.effect(
             ) ?? false
 
           if (
+            !routingRetry &&
             lastAssistant?.finish &&
             !["tool-calls", "unknown"].includes(lastAssistant.finish) &&
             !hasToolCalls &&
@@ -1135,6 +1166,7 @@ const layer = Layer.effect(
             break
           }
 
+          yield* orchestrationPolicy.authorize({ sessionID, tool: "__turn__", args: {} }).pipe(Effect.orDie)
           step++
           if (step === 1)
             yield* title({
@@ -1144,7 +1176,41 @@ const layer = Layer.effect(
               history: msgs,
             }).pipe(Effect.ignore, Effect.forkIn(scope))
 
-          const model = yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID)
+          const assignment = yield* orchestration.handoffBrief({ sessionID }).pipe(Effect.orDie)
+          const managedRouting = routingEnabled() && !!assignment.role && session.metadata?.cvis_model_pin !== true
+          if (routeUserID !== lastUser.id) {
+            routeUserID = lastUser.id
+            routeModel = undefined
+            attemptedRoutes.clear()
+          }
+          if (managedRouting && !routeModel) {
+            const models = provider.routingModels
+              ? yield* provider.routingModels()
+              : Object.values(yield* provider.list()).flatMap((item) => Object.values(item.models))
+            routeModel = routeCandidates(models, {
+              attempted: attemptedRoutes,
+              estimatedInput: estimate(JSON.stringify(msgs)),
+              needsTools: true,
+              needsImage: msgs.some((message) =>
+                message.parts.some((part) => part.type === "file" && part.mime.startsWith("image/")),
+              ),
+              needsPDF: msgs.some((message) =>
+                message.parts.some((part) => part.type === "file" && part.mime === "application/pdf"),
+              ),
+            })[0]
+            if (!routeModel)
+              throw new Error(
+                "CVIS routing exhausted eligible OpenCode free, LiteLLM and Cline models; no unapproved provider selected",
+              )
+            yield* Effect.logInfo("cvis model route", {
+              sessionID,
+              provider: routeModel.providerID,
+              model: routeModel.id,
+              attempt: attemptedRoutes.size + 1,
+            })
+          }
+          routingRetry = false
+          const model = routeModel ?? (yield* getModel(lastUser.model.providerID, lastUser.model.modelID, sessionID))
           const task = tasks.pop()
 
           if (task?.type === "subtask") {
@@ -1174,7 +1240,6 @@ const layer = Layer.effect(
           }
 
           const agent = yield* agents.get(lastUser.agent)
-          yield* orchestrationPolicy.authorize({ sessionID, tool: "__turn__", args: {} }).pipe(Effect.orDie)
           const bindingContext = yield* orchestration.handoffBrief({ sessionID }).pipe(Effect.orDie)
           if (typeof bindingContext.promptStartID === "string") {
             const start = msgs.findIndex((message) => message.info.id === bindingContext.promptStartID)
@@ -1289,6 +1354,15 @@ const layer = Layer.effect(
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
+            const maxOutputTokens = yield* orchestrationPolicy
+              .prepareTurn({
+                sessionID,
+                inputTokensEstimate:
+                  estimate(JSON.stringify({ system, messages: modelMsgs })) + Object.keys(tools).length * 256,
+                requestedOutputTokens: Math.min(model.limit.output || 4096, 4096),
+                requestID: msg.id,
+              })
+              .pipe(Effect.orDie)
             const result = yield* handle.process({
               user: lastUser,
               agent,
@@ -1303,8 +1377,41 @@ const layer = Layer.effect(
               tools,
               model,
               toolChoice: format.type === "json_schema" ? "required" : undefined,
+              maxOutputTokens,
+              routeManaged: managedRouting,
             })
 
+            if (managedRouting) {
+              const current = yield* sessions
+                .findMessage(sessionID, (message) => message.info.id === msg.id)
+                .pipe(Effect.orDie)
+              const parts = Option.isSome(current) ? current.value.parts : []
+              const empty =
+                !handle.message.error &&
+                !parts.some(
+                  (part) =>
+                    part.type === "tool" || (part.type === "text" && part.text.trim()) || part.type === "reasoning",
+                )
+              const failure =
+                handle.message.error ??
+                (empty
+                  ? { name: "APIError", data: { message: "empty provider response", statusCode: 502 } }
+                  : undefined)
+              if (retryableRoute(failure) && safeToReroute(parts) && attemptedRoutes.size + 1 < MAX_ROUTE_ATTEMPTS) {
+                markRouteFailure(model, failure!)
+                attemptedRoutes.add(modelKey(model))
+                routeModel = undefined
+                routingRetry = true
+                yield* Effect.logWarning("cvis route failed before output; selecting fallback", {
+                  sessionID,
+                  model: modelKey(model),
+                  error: failure?.name,
+                })
+                return "continue" as const
+              }
+            }
+
+            if (yield* orchestration.reviewReady({ sessionID })) return "break" as const
             if (structured !== undefined) {
               handle.message.structured = structured
               handle.message.finish = handle.message.finish ?? "stop"

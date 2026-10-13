@@ -45,6 +45,8 @@ export type StreamInput = {
   tools: Record<string, Tool>
   retries?: number
   toolChoice?: "auto" | "required" | "none"
+  maxOutputTokens?: number
+  routeManaged?: boolean
 }
 
 export type StreamRequest = StreamInput & {
@@ -235,7 +237,10 @@ const live: Layer.Layer<
           temperature: prepared.params.temperature,
           topP: prepared.params.topP,
           topK: prepared.params.topK,
-          maxOutputTokens: prepared.params.maxOutputTokens,
+          maxOutputTokens:
+            input.maxOutputTokens === undefined
+              ? prepared.params.maxOutputTokens
+              : Math.min(prepared.params.maxOutputTokens ?? input.maxOutputTokens, input.maxOutputTokens),
           providerOptions: prepared.params.options,
           headers: prepared.headers,
           abort: input.abort,
@@ -317,7 +322,10 @@ const live: Layer.Layer<
           activeTools: Object.keys(prepared.tools).filter((x) => x !== "invalid"),
           tools: prepared.tools,
           toolChoice: input.toolChoice,
-          maxOutputTokens: prepared.params.maxOutputTokens,
+          maxOutputTokens:
+            input.maxOutputTokens === undefined
+              ? prepared.params.maxOutputTokens
+              : Math.min(prepared.params.maxOutputTokens ?? input.maxOutputTokens, input.maxOutputTokens),
           abortSignal: input.abort,
           headers: prepared.headers,
           maxRetries: input.retries ?? 0,

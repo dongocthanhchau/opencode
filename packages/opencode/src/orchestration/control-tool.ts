@@ -2,6 +2,17 @@ import { Effect, Schema } from "effect"
 import { Tool } from "@/tool/tool"
 import { OrchestrationControl } from "./control"
 
+export const TaskScopeSchema = Schema.Struct({
+  read_paths: Schema.optional(Schema.Array(Schema.String)),
+  write_paths: Schema.optional(Schema.Array(Schema.String)),
+  tools: Schema.optional(Schema.Array(Schema.String)),
+  commands: Schema.optional(Schema.Array(Schema.String)),
+  skills: Schema.optional(Schema.Array(Schema.String)),
+  max_tokens: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
+  review_task_id: Schema.optional(Schema.String),
+  review_revision: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
+})
+
 const Parameters = Schema.Struct({
   operation: Schema.Literals([
     "create_task",
@@ -26,13 +37,7 @@ const Parameters = Schema.Struct({
     title: Schema.optional(Schema.String),
     description: Schema.optional(Schema.String),
     role: Schema.optional(Schema.Literals(["manager", "researcher", "implementer", "verifier", "maintenance"])),
-    scope: Schema.optional(
-      Schema.Struct({
-        read_paths: Schema.optional(Schema.Array(Schema.String)),
-        write_paths: Schema.optional(Schema.Array(Schema.String)),
-        tools: Schema.optional(Schema.Array(Schema.String)),
-      }),
-    ),
+    scope: Schema.optional(TaskScopeSchema),
     acceptance: Schema.optional(
       Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String, weight: Schema.Number })),
     ),
@@ -94,11 +99,7 @@ export const ControlActions = [
       description: Schema.String,
       role: Schema.Literals(["implementer", "researcher", "verifier", "maintenance"]),
       goalID: Schema.String,
-      scope: Schema.Struct({
-        read_paths: Schema.Array(Schema.String),
-        write_paths: Schema.Array(Schema.String),
-        tools: Schema.Array(Schema.String),
-      }),
+      scope: TaskScopeSchema,
       acceptance: Schema.Array(Schema.Struct({ id: Schema.String, label: Schema.String, weight: Schema.Number })),
     }),
     "Manager: create a task with exact requirements, scope and acceptance. Supply fields directly; do not nest arguments or task. Returns task ID.",
@@ -119,7 +120,7 @@ export const ControlActions = [
     "cvis_verify",
     "verify",
     Schema.Struct({
-      taskID: Schema.String,
+      taskID: Schema.optional(Schema.String),
       checkID: Schema.String,
       verdict: Schema.Literals(["pass", "fail"]),
       files: Schema.Array(Schema.String),

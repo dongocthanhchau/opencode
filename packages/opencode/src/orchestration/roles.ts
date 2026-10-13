@@ -13,6 +13,7 @@ export interface TaskScope {
   write_paths?: string[]
   tools?: string[]
   commands?: string[]
+  skills?: string[]
   max_tokens?: number
   allow_outside?: boolean
   review_task_id?: string

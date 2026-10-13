@@ -1,4 +1,5 @@
-import { desc, eq, inArray, isNull, sql } from "drizzle-orm"
+import { createHash } from "node:crypto"
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { Database as BunDatabase } from "bun:sqlite"
@@ -13,7 +14,8 @@ import {
   SessionTable,
 } from "@opencode-ai/core/session/sql"
 import { SessionID } from "../session/schema"
-import { embed, keywordsOf } from "./capture"
+import { CvisProjectGoalTable } from "@opencode-ai/core/orchestration/sql"
+import { embed, keywordsOf, splitClaims } from "./capture"
 
 const MAX_CHARS = 6000
 const MAX_FACTS = 5
@@ -74,19 +76,11 @@ const layer = Layer.effect(
           continue
         }
         if (data.role !== "user") continue
-        const parts = yield* db
-          .select()
-          .from(PartTable)
-          .where(eq(PartTable.message_id, m.id))
-          .all()
-          .pipe(Effect.orDie)
+        const parts = yield* db.select().from(PartTable).where(eq(PartTable.message_id, m.id)).all().pipe(Effect.orDie)
         const texts: string[] = []
         for (const part of parts) {
           try {
-            const pdata = (typeof part.data === "string" ? JSON.parse(part.data) : part.data) as Record<
-              string,
-              unknown
-            >
+            const pdata = (typeof part.data === "string" ? JSON.parse(part.data) : part.data) as Record<string, unknown>
             if (pdata.type === "text" && typeof pdata.text === "string") texts.push(pdata.text)
           } catch {
             continue
@@ -103,7 +97,37 @@ const layer = Layer.effect(
         .slice(0, 5)
       if (keywords.length === 0) return undefined
 
-      const ftsQuery = keywords.map((kw) => '"'+kw+'"').join(" OR ")
+      // Goal pinning: memories relevant to the session project's active
+      // goals must survive long tasks, so goal vocabulary joins both the
+      // FTS prefilter and the ranking below. Without this, a goal stated
+      // once in an early compaction can fall out of the top MAX_FACTS.
+      const goalKeywords =
+        session.project_id == null
+          ? []
+          : [
+              ...new Set(
+                (
+                  yield* db
+                    .select()
+                    .from(CvisProjectGoalTable)
+                    .where(
+                      and(
+                        eq(CvisProjectGoalTable.project_id, session.project_id),
+                        eq(CvisProjectGoalTable.status, "active"),
+                      ),
+                    )
+                    .all()
+                    .pipe(Effect.orDie)
+                ).flatMap((goal) => keywordsOf(`${goal.title}\n${goal.objective}`)),
+              ),
+            ]
+              .map(ftsEscape)
+              .filter((w) => w.length > 2)
+              .slice(0, 8)
+
+      const ftsQuery = [...keywords, ...goalKeywords.filter((kw) => !keywords.includes(kw))]
+        .map((kw) => '"' + kw + '"')
+        .join(" OR ")
       const searchFts = (table: string) =>
         Effect.try({
           try: () => {
@@ -139,32 +163,34 @@ const layer = Layer.effect(
       // B3: forgotten hashes must never recall, even for legacy rows that
       // predate the capture-time tombstone gate.
       const tombstoned = new Set(
-        (
-          yield* db
-            .select({ hash: MemoryTombstoneTable.hash })
-            .from(MemoryTombstoneTable)
-            .where(
-              session.project_id == null
-                ? isNull(MemoryTombstoneTable.project_id)
-                : eq(MemoryTombstoneTable.project_id, session.project_id),
-            )
-            .all()
-            .pipe(Effect.orDie)
-        ).map((r) => r.hash),
-      )
-      // A legacy whole-session fact must not resurrect a claim that was
-      // later superseded, deleted, or tombstoned: if any retired item from
-      // the same session contributed text to the fact, the fact stays out.
-      const retiredClaims = (
-        yield* db
-          .select({ session_id: MemoryItemTable.session_id, claim: MemoryItemTable.claim })
-          .from(MemoryItemTable)
-          .where(inArray(MemoryItemTable.status, ["superseded", "deleted"]))
+        (yield* db
+          .select({ hash: MemoryTombstoneTable.hash })
+          .from(MemoryTombstoneTable)
+          .where(
+            session.project_id == null
+              ? isNull(MemoryTombstoneTable.project_id)
+              : eq(MemoryTombstoneTable.project_id, session.project_id),
+          )
           .all()
-          .pipe(Effect.orDie)
-      ).filter((r) => r.session_id != null)
-      const shadowed = (sessionID: string | null, fact: string) =>
-        sessionID != null && retiredClaims.some((r) => r.session_id === sessionID && fact.includes(r.claim))
+          .pipe(Effect.orDie)).map((r) => r.hash),
+      )
+      const knownClaims = yield* db
+        .select({ session_id: MemoryItemTable.session_id, claim: MemoryItemTable.claim })
+        .from(MemoryItemTable)
+        .where(
+          and(
+            session.project_id == null
+              ? isNull(MemoryItemTable.project_id)
+              : eq(MemoryItemTable.project_id, session.project_id),
+            inArray(
+              MemoryItemTable.session_id,
+              factRows.flatMap((row) => (row.session_id ? [row.session_id] : [])),
+            ),
+          ),
+        )
+        .all()
+        .pipe(Effect.orDie)
+      const normalized = (text: string) => text.normalize("NFKC").trim().replace(/\s+/g, " ")
       const candidates: {
         id: string
         project_id: string | null
@@ -178,18 +204,29 @@ const layer = Layer.effect(
       }[] = [
         ...factRows
           .filter((row) => !tombstoned.has(row.hash ?? ""))
-          .filter((row) => !shadowed(row.session_id, row.fact))
-          .map((row) => ({
-            id: row.id,
-            project_id: row.project_id,
-            topic: row.topic ?? "",
-            text: row.fact,
-            trust: row.trust ?? 1,
-            time_created: row.time_created,
-            ttl_days: row.ttl_days,
-            embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,
-            kind: row.kind ?? "fact",
-          })),
+          .flatMap((row) =>
+            splitClaims(row.fact)
+              .filter(
+                (claim) => !tombstoned.has(createHash("sha256").update(`${row.project_id}\n${claim}`).digest("hex")),
+              )
+              .filter(
+                (claim) =>
+                  !knownClaims.some(
+                    (item) => item.session_id === row.session_id && normalized(item.claim) === normalized(claim),
+                  ),
+              )
+              .map((claim) => ({
+                id: row.id,
+                project_id: row.project_id,
+                topic: row.topic ?? "",
+                text: claim,
+                trust: row.trust ?? 1,
+                time_created: row.time_created,
+                ttl_days: row.ttl_days,
+                embedding: Array.isArray(row.embedding) ? (row.embedding as number[]) : null,
+                kind: row.kind ?? "fact",
+              })),
+          ),
         ...itemRows
           .filter((row) => row.status !== "superseded" && row.status !== "deleted")
           .filter((row) => !tombstoned.has(row.hash ?? ""))
@@ -208,33 +245,38 @@ const layer = Layer.effect(
 
       const now = Date.now()
       const queryEmbedding = yield* embed(query)
-      const scored: { id: string; line: string; score: number }[] = []
+      const scored: { id: string; line: string; score: number; goal: boolean }[] = []
       const scoredIDs = new Set<string>()
+      const scoredText = new Set<string>()
       for (const row of candidates) {
         if (row.project_id !== session.project_id) continue
+        if (scoredText.has(normalized(row.text))) continue
         const ageDays = Math.max(0, (now - (row.time_created ?? now)) / 86_400_000)
         if (row.ttl_days != null && ageDays > row.ttl_days) continue
         const haystack = (row.topic + "\n" + row.text).toLowerCase()
         const hits = keywords.filter((kw) => haystack.includes(kw.toLowerCase())).length
+        const goalHits = goalKeywords.filter((kw) => haystack.includes(kw.toLowerCase())).length
         const cos = queryEmbedding && row.embedding ? cosine(queryEmbedding, row.embedding) : undefined
-        if (hits === 0 && (cos === undefined || cos <= 0.6)) continue
+        if (hits === 0 && goalHits === 0 && (cos === undefined || cos <= 0.6)) continue
         const decay = Math.exp(-ageDays / (row.ttl_days ?? 90))
-        const score = (hits * 2 + (cos ?? 0)) * (row.trust ?? 1) * decay
+        const score = (hits * 2 + goalHits * 2 + (cos ?? 0)) * (row.trust ?? 1) * decay
         scored.push({
           id: row.id,
           line: "- [" + (row.topic || row.kind || "memory") + "] " + row.text.slice(0, 500),
           score,
+          goal: goalHits > 0,
         })
         scoredIDs.add(row.id)
+        scoredText.add(normalized(row.text))
       }
       // Phase 3c: boost scores of items connected via relation graph (1-hop).
       if (scored.length > 0 && itemRows.length > 0) {
-        const scoredIDs = new Set(itemRows.filter((r) => r.status !== "superseded").map((r) => r.id))
-        if (scoredIDs.size > 0) {
+        const sourceIDs = itemRows.filter((r) => scoredIDs.has(r.id)).map((r) => r.id)
+        if (sourceIDs.length > 0) {
           const relations = yield* db
             .select()
             .from(MemoryRelationTable)
-            .where(inArray(MemoryRelationTable.from_id, [...scoredIDs]))
+            .where(inArray(MemoryRelationTable.from_id, sourceIDs))
             .all()
             .pipe(Effect.orDie)
           const boostTargets = new Map<string, number>()
@@ -250,12 +292,17 @@ const layer = Layer.effect(
               .all()
               .pipe(Effect.orDie)
             for (const row of boostedRows) {
-              if (row.status === "superseded" || row.status === "deleted" || row.project_id !== session.project_id) continue
+              if (row.status === "superseded" || row.status === "deleted" || row.project_id !== session.project_id)
+                continue
               if (tombstoned.has(row.hash ?? "")) continue
               if (scoredIDs.has(row.id)) continue
+              if (scoredText.has(normalized(row.claim))) continue
               const ageDays = Math.max(0, (now - (row.time_created ?? now)) / 86_400_000)
               if (row.ttl_days != null && ageDays > row.ttl_days) continue
-              const cos = queryEmbedding && Array.isArray(row.embedding) ? cosine(queryEmbedding, row.embedding as number[]) : undefined
+              const cos =
+                queryEmbedding && Array.isArray(row.embedding)
+                  ? cosine(queryEmbedding, row.embedding as number[])
+                  : undefined
               const decay = Math.exp(-ageDays / (row.ttl_days ?? 90))
               const base = (cos ?? 0) * (row.trust ?? 1) * decay
               const boost = boostTargets.get(row.id) ?? 0
@@ -264,8 +311,12 @@ const layer = Layer.effect(
                   id: row.id,
                   line: "- [" + (row.topic || row.kind || "memory") + "] " + row.claim.slice(0, 500),
                   score: base + boost,
+                  goal: goalKeywords.some((kw) =>
+                    (row.topic + "\n" + row.claim).toLowerCase().includes(kw.toLowerCase()),
+                  ),
                 })
                 scoredIDs.add(row.id)
+                scoredText.add(normalized(row.claim))
               }
             }
           }
@@ -274,21 +325,31 @@ const layer = Layer.effect(
 
       scored.sort((a, b) => b.score - a.score)
 
+      // Pin the best goal-matching claim to the front so an active goal
+      // always keeps one slot within MAX_FACTS. The normal char-budget
+      // loop below still applies, so output bounds are unchanged.
+      const pinned = scored.find((s) => s.goal)
+      const ordered = pinned ? [pinned, ...scored.filter((s) => s !== pinned)] : scored
+
       const picked: string[] = []
       let chars = 0
-      for (const s of scored) {
+      for (const s of ordered) {
         if (picked.length >= MAX_FACTS) break
         if (chars + s.line.length > MAX_CHARS) break
         picked.push(s.line)
         chars += s.line.length
       }
       if (picked.length === 0) return undefined
-      yield* Effect.logInfo("memory recalled", { count: picked.length })
+      yield* Effect.logInfo("memory recalled", {
+        count: picked.length,
+        candidates: scored.length,
+        goalKeywords: goalKeywords.length,
+        pinned: pinned !== undefined,
+      })
       return "Related memories:\n" + picked.join("\n")
     })
 
-    const recall = (input: { sessionID: SessionID }) =>
-      inner(input).pipe(Effect.orElseSucceed(() => undefined))
+    const recall = (input: { sessionID: SessionID }) => inner(input).pipe(Effect.orElseSucceed(() => undefined))
 
     return Service.of({ recall, recallStrict: inner })
   }),

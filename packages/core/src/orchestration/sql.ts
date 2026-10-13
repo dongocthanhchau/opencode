@@ -185,3 +185,62 @@ export const CvisEventTable = sqliteTable(
   },
   (table) => [index("cvis_event_project_time_idx").on(table.project_id, table.time_created, table.id)],
 )
+
+export const ManagedProjectStatus = ["planning", "ready", "active", "paused", "completed", "archived"] as const
+export type ManagedProjectStatus = (typeof ManagedProjectStatus)[number]
+
+export const ManagedProjectType = ["core", "channel", "assistant-app", "work", "initiative"] as const
+export type ManagedProjectType = (typeof ManagedProjectType)[number]
+
+// Stable managed identity, independent of the native Git-derived project
+// rows it links to. Native IDs may change on remote/path changes; the
+// managed row (and everything referencing it) never moves.
+export const CvisManagedProjectTable = sqliteTable(
+  "cvis_managed_project",
+  {
+    id: text().primaryKey(),
+    slug: text().notNull(),
+    type: text().notNull().default("work"),
+    owner: text().notNull().default(""),
+    mission: text().notNull().default(""),
+    status: text().notNull().default("planning"),
+    native_project_id: text(),
+    metadata: text({ mode: "json" }).$type<Record<string, unknown>>(),
+    ...Timestamps,
+  },
+  (table) => [
+    uniqueIndex("cvis_managed_project_slug_idx").on(table.slug),
+    index("cvis_managed_project_native_idx").on(table.native_project_id),
+    index("cvis_managed_project_status_idx").on(table.status),
+  ],
+)
+
+// Durable schedules owned by managed projects. A schedule is only ever
+// executed by explicitly claiming it (single winner via lease CAS) and
+// completing it; there is no in-process loop, so no legacy cron is
+// replaced implicitly. Claim/complete are the only writers of lease state.
+export const CvisScheduleTable = sqliteTable(
+  "cvis_schedule",
+  {
+    id: text().primaryKey(),
+    managed_project_id: text()
+      .notNull()
+      .references(() => CvisManagedProjectTable.id, { onDelete: "cascade" }),
+    name: text().notNull(),
+    kind: text().notNull().default("health"),
+    payload: text({ mode: "json" }).$type<Record<string, unknown>>(),
+    interval_seconds: integer(),
+    enabled: integer().notNull().default(1),
+    next_due_at: integer().notNull(),
+    lease_owner: text(),
+    lease_expires: integer(),
+    last_status: text(),
+    last_run_at: integer(),
+    consecutive_failures: integer().notNull().default(0),
+    ...Timestamps,
+  },
+  (table) => [
+    uniqueIndex("cvis_schedule_managed_name_idx").on(table.managed_project_id, table.name),
+    index("cvis_schedule_due_idx").on(table.enabled, table.next_due_at),
+  ],
+)

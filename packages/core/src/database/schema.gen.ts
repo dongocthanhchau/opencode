@@ -117,6 +117,20 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`cvis_managed_project\` (
+          \`id\` text PRIMARY KEY,
+          \`slug\` text NOT NULL,
+          \`type\` text DEFAULT 'work' NOT NULL,
+          \`owner\` text DEFAULT '' NOT NULL,
+          \`mission\` text DEFAULT '' NOT NULL,
+          \`status\` text DEFAULT 'planning' NOT NULL,
+          \`native_project_id\` text,
+          \`metadata\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`cvis_message\` (
           \`id\` text PRIMARY KEY,
           \`project_id\` text NOT NULL,
@@ -159,6 +173,26 @@ export default {
           \`inputs\` text,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL
+        );
+      `)
+      yield* tx.run(`
+        CREATE TABLE \`cvis_schedule\` (
+          \`id\` text PRIMARY KEY,
+          \`managed_project_id\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`kind\` text DEFAULT 'health' NOT NULL,
+          \`payload\` text,
+          \`interval_seconds\` integer,
+          \`enabled\` integer DEFAULT 1 NOT NULL,
+          \`next_due_at\` integer NOT NULL,
+          \`lease_owner\` text,
+          \`lease_expires\` integer,
+          \`last_status\` text,
+          \`last_run_at\` integer,
+          \`consecutive_failures\` integer DEFAULT 0 NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`fk_cvis_schedule_managed_project_id_cvis_managed_project_id_fk\` FOREIGN KEY (\`managed_project_id\`) REFERENCES \`cvis_managed_project\`(\`id\`) ON DELETE CASCADE
         );
       `)
       yield* tx.run(`
@@ -491,6 +525,11 @@ export default {
       yield* tx.run(
         `CREATE INDEX \`cvis_event_project_time_idx\` ON \`cvis_event\` (\`project_id\`,\`time_created\`,\`id\`);`,
       )
+      yield* tx.run(`CREATE UNIQUE INDEX \`cvis_managed_project_slug_idx\` ON \`cvis_managed_project\` (\`slug\`);`)
+      yield* tx.run(
+        `CREATE INDEX \`cvis_managed_project_native_idx\` ON \`cvis_managed_project\` (\`native_project_id\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`cvis_managed_project_status_idx\` ON \`cvis_managed_project\` (\`status\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_message_project_idx\` ON \`cvis_message\` (\`project_id\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_message_task_idx\` ON \`cvis_message\` (\`task_id\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_message_to_idx\` ON \`cvis_message\` (\`to_session\`,\`status\`);`)
@@ -502,6 +541,10 @@ export default {
         `CREATE UNIQUE INDEX \`cvis_template_name_version_idx\` ON \`cvis_prompt_template\` (\`name\`,\`version\`);`,
       )
       yield* tx.run(`CREATE INDEX \`cvis_template_role_idx\` ON \`cvis_prompt_template\` (\`role\`);`)
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`cvis_schedule_managed_name_idx\` ON \`cvis_schedule\` (\`managed_project_id\`,\`name\`);`,
+      )
+      yield* tx.run(`CREATE INDEX \`cvis_schedule_due_idx\` ON \`cvis_schedule\` (\`enabled\`,\`next_due_at\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_binding_project_idx\` ON \`cvis_session_binding\` (\`project_id\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_binding_task_idx\` ON \`cvis_session_binding\` (\`task_id\`);`)
       yield* tx.run(`CREATE INDEX \`cvis_run_task_idx\` ON \`cvis_task_run\` (\`task_id\`);`)

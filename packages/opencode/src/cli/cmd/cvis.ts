@@ -1,9 +1,14 @@
 import type { Argv } from "yargs"
 import { Cause, Effect } from "effect"
+import { eq } from "drizzle-orm"
 import { cmd } from "./cmd"
 import { CliError, effectCmd, fail } from "../effect-cmd"
 import { UI } from "../ui"
 import { Orchestration } from "@/orchestration/service"
+import { Database } from "@opencode-ai/core/database/database"
+import { ProjectV2 } from "@opencode-ai/core/project"
+import { ProjectTable } from "@opencode-ai/core/project/sql"
+import { MemoryFactTable, MemoryItemTable } from "@opencode-ai/core/session/sql"
 
 export const CvisCommand = cmd({
   command: "cvis",
@@ -44,6 +49,17 @@ export const CvisCommand = cmd({
       .command(CvisRulesetCommand)
       .command(CvisScopeCheckCommand)
       .command(CvisScopeResolveCommand)
+      .command(CvisManagedRegisterCommand)
+      .command(CvisManagedGetCommand)
+      .command(CvisManagedListCommand)
+      .command(CvisManagedLinkCommand)
+      .command(CvisManagedStatusCommand)
+      .command(CvisScheduleRegisterCommand)
+      .command(CvisScheduleListCommand)
+      .command(CvisScheduleTickCommand)
+      .command(CvisScheduleCompleteCommand)
+      .command(CvisScheduleEnableCommand)
+      .command(CvisManagedDoctorCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -662,5 +678,271 @@ export const CvisTaskDetailCommand = effectCmd({
     const svc = yield* Orchestration.Service
     const out = yield* run(svc.taskDetail({ taskID: args.id as string }))
     UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisManagedRegisterCommand = effectCmd({
+  command: "managed-register <slug>",
+  describe: "register a stable managed project identity (idempotent on slug)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("slug", { type: "string", demandOption: true })
+      .option("type", { type: "string" })
+      .option("owner", { type: "string" })
+      .option("mission", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.managedRegister")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.registerManagedProject({
+        slug: args.slug as string,
+        type: (args.type as string | undefined) ?? undefined,
+        owner: (args.owner as string | undefined) ?? undefined,
+        mission: (args.mission as string | undefined) ?? undefined,
+      }),
+    )
+    UI.println(out.id)
+  }),
+})
+
+export const CvisManagedGetCommand = effectCmd({
+  command: "managed-get",
+  describe: "show a managed project by id or slug",
+  instance: false,
+  builder: (yargs) => yargs.option("id", { type: "string" }).option("slug", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.managedGet")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.getManagedProject({
+        id: (args.id as string | undefined) ?? undefined,
+        slug: (args.slug as string | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisManagedListCommand = effectCmd({
+  command: "managed-list",
+  describe: "list managed projects, optionally filtered by status",
+  instance: false,
+  builder: (yargs) => yargs.option("status", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.managedList")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.listManagedProjects({ status: (args.status as string | undefined) ?? undefined }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisManagedLinkCommand = effectCmd({
+  command: "managed-link <id> <native>",
+  describe: "link a managed project to a native project row (one native per managed identity)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .positional("native", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.managedLink")(function* (args) {
+    const svc = yield* Orchestration.Service
+    yield* run(svc.linkManagedProject({ id: args.id as string, nativeProjectID: args.native as string }))
+    UI.println("ok")
+  }),
+})
+
+export const CvisManagedStatusCommand = effectCmd({
+  command: "managed-status <id> <status>",
+  describe: "transition a managed project through planning/ready/active/paused/completed/archived",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .positional("status", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.managedStatus")(function* (args) {
+    const svc = yield* Orchestration.Service
+    yield* run(svc.setManagedProjectStatus({ id: args.id as string, status: args.status as string }))
+    UI.println("ok")
+  }),
+})
+
+export const CvisScheduleRegisterCommand = effectCmd({
+  command: "schedule-register <managed> <name>",
+  describe: "register a durable schedule on a managed project (idempotent on name)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("managed", { type: "string", demandOption: true })
+      .positional("name", { type: "string", demandOption: true })
+      .option("kind", { type: "string" })
+      .option("interval", { type: "number", describe: "repeat interval in seconds" })
+      .option("payload", { type: "string", describe: "payload as JSON" }),
+  handler: Effect.fn("Cli.cvis.scheduleRegister")(function* (args) {
+    const svc = yield* Orchestration.Service
+    let payload: Record<string, unknown> | undefined
+    if (typeof args.payload === "string") {
+      try {
+        payload = JSON.parse(args.payload) as Record<string, unknown>
+      } catch {
+        return yield* fail("payload must be JSON")
+      }
+    }
+    const out = yield* run(
+      svc.registerSchedule({
+        managedProjectID: args.managed as string,
+        name: args.name as string,
+        kind: (args.kind as string | undefined) ?? undefined,
+        payload,
+        intervalSeconds: (args.interval as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println(out.id)
+  }),
+})
+
+export const CvisScheduleListCommand = effectCmd({
+  command: "schedule-list",
+  describe: "list durable schedules, optionally for one managed project",
+  instance: false,
+  builder: (yargs) => yargs.option("managed", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.scheduleList")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.listSchedules({ managedProjectID: (args.managed as string | undefined) ?? undefined }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisScheduleTickCommand = effectCmd({
+  command: "schedule-tick",
+  describe: "claim the oldest due schedule for an owner (single winner per lease)",
+  instance: false,
+  builder: (yargs) =>
+    yargs.option("owner", { type: "string", demandOption: true }).option("lease", { type: "number", describe: "lease in milliseconds" }),
+  handler: Effect.fn("Cli.cvis.scheduleTick")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.claimDueSchedule({
+        owner: args.owner as string,
+        leaseMs: (args.lease as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out ?? null))
+  }),
+})
+
+export const CvisScheduleCompleteCommand = effectCmd({
+  command: "schedule-complete <id>",
+  describe: "record a claimed schedule run as ok or failed and release its lease",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .option("owner", { type: "string", demandOption: true })
+      .option("status", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.scheduleComplete")(function* (args) {
+    const svc = yield* Orchestration.Service
+    yield* run(
+      svc.completeScheduleRun({
+        id: args.id as string,
+        owner: args.owner as string,
+        status: args.status as string,
+      }),
+    )
+    UI.println("ok")
+  }),
+})
+
+export const CvisScheduleEnableCommand = effectCmd({
+  command: "schedule-enable <id> <on>",
+  describe: "enable (on=true) or disable (on=false) a schedule",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .positional("on", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.scheduleEnable")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const on = args.on as string
+    if (on !== "true" && on !== "false") return yield* fail("on must be true or false")
+    yield* run(svc.setScheduleEnabled({ id: args.id as string, enabled: on === "true" }))
+    UI.println("ok")
+  }),
+})
+
+export const CvisManagedDoctorCommand = effectCmd({
+  command: "managed-doctor",
+  describe: "read-only admission check for a managed project: identity, native link, manager, goals, schedules, memory",
+  instance: false,
+  builder: (yargs) => yargs.option("id", { type: "string" }).option("slug", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.managedDoctor")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const { db } = yield* Database.Service
+    const managed = yield* run(
+      svc.getManagedProject({
+        id: (args.id as string | undefined) ?? undefined,
+        slug: (args.slug as string | undefined) ?? undefined,
+      }),
+    )
+    const issues: string[] = []
+    const nativeID = managed.native_project_id
+    if (!nativeID) issues.push("native-unlinked")
+    let goals: { status: string }[] = []
+    let bindings: { role: string; status: string }[] = []
+    if (nativeID) {
+      const native = yield* db
+        .select({ id: ProjectTable.id })
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, ProjectV2.ID.make(nativeID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!native) {
+        issues.push("native-missing")
+      } else {
+        const snapshot = yield* run(svc.projectSnapshot({ projectID: nativeID }))
+        goals = (snapshot.goals ?? []) as { status: string }[]
+        bindings = (snapshot.bindings ?? []) as { role: string; status: string }[]
+      }
+    }
+    if (nativeID && !bindings.some((b) => b.role === "manager")) issues.push("no-manager-binding")
+    if (nativeID && !goals.some((g) => g.status === "active")) issues.push("no-active-goal")
+    const schedules = (yield* run(svc.listSchedules({}))) as {
+      managed_project_id: string
+      consecutive_failures: number
+      lease_expires: number | null
+      last_run_at: number | null
+    }[]
+    const own = schedules.filter((s) => s.managed_project_id === managed.id)
+    if (own.some((s) => s.consecutive_failures > 0)) issues.push("schedule-failing")
+    if (own.some((s) => s.lease_expires != null && s.lease_expires <= Date.now())) issues.push("schedule-lease-stale")
+    let facts = 0
+    let items = 0
+    if (nativeID) {
+      const factRows = yield* db
+        .select({ id: MemoryFactTable.id })
+        .from(MemoryFactTable)
+        .where(eq(MemoryFactTable.project_id, ProjectV2.ID.make(nativeID)))
+        .all()
+        .pipe(Effect.orDie)
+      const itemRows = yield* db
+        .select({ id: MemoryItemTable.id })
+        .from(MemoryItemTable)
+        .where(eq(MemoryItemTable.project_id, ProjectV2.ID.make(nativeID)))
+        .all()
+        .pipe(Effect.orDie)
+      facts = factRows.length
+      items = itemRows.length
+    }
+    UI.println(
+      JSON.stringify({
+        managed: { id: managed.id, slug: managed.slug, type: managed.type, status: managed.status, native_project_id: nativeID },
+        goals: { total: goals.length, active: goals.filter((g) => g.status === "active").length },
+        bindings: { total: bindings.length, manager: bindings.some((b) => b.role === "manager") },
+        schedules: { total: own.length, failing: own.filter((s) => s.consecutive_failures > 0).length },
+        memory: { facts, items },
+        issues,
+      }),
+    )
   }),
 })

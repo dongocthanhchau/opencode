@@ -22,6 +22,13 @@ export const MemoryCommand = cmd({
       .command(MemoryRecallCommand)
       .command(MemoryPruneCommand)
       .command(MemoryGraphCommand)
+      .command(MemoryJobEnqueueCommand)
+      .command(MemoryJobClaimCommand)
+      .command(MemoryJobCompleteCommand)
+      .command(MemoryJobRetryCommand)
+      .command(MemoryJobReleaseCommand)
+      .command(MemoryJobListCommand)
+      .command(MemoryJobRunOnceCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -240,5 +247,127 @@ export const MemoryPruneCommand = effectCmd({
     } else {
       UI.println(args.apply ? "Nothing to prune" : "Dry run: pass --apply to delete")
     }
+  }),
+})
+
+function jobFailureMessage(cause: unknown): string {
+  const failure = Cause.squash(cause as never)
+  if (typeof failure === "object" && failure !== null && typeof (failure as { _tag?: unknown })._tag === "string") {
+    const tagged = failure as { _tag: string; id?: unknown; reason?: unknown }
+    if (tagged._tag === "MemoryJobNotFound") return `memory job not found: ${String(tagged.id)}`
+    if (tagged._tag === "MemoryJobConflict") return `memory job conflict ${String(tagged.id)}: ${String(tagged.reason)}`
+  }
+  return Cause.pretty(cause as never)
+}
+
+function runJob<A>(effect: Effect.Effect<A, unknown>): Effect.Effect<A, import("../effect-cmd").CliError> {
+  return Effect.gen(function* () {
+    const exit = yield* Effect.exit(effect)
+    if (exit._tag === "Failure") {
+      return yield* fail(`memory job failed: ${jobFailureMessage(exit.cause)}`)
+    }
+    return exit.value
+  }) as Effect.Effect<A, import("../effect-cmd").CliError>
+}
+
+export const MemoryJobEnqueueCommand = effectCmd({
+  command: "job-enqueue <sessionID>",
+  describe: "enqueue a durable capture job for a session (idempotent while open)",
+  instance: false,
+  builder: (yargs) => yargs.positional("sessionID", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.memory.jobEnqueue")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(svc.enqueueCaptureJob({ sessionID: SessionID.make(args.sessionID as string) }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const MemoryJobClaimCommand = effectCmd({
+  command: "job-claim",
+  describe: "claim the oldest pending capture job for an owner (single winner)",
+  instance: false,
+  builder: (yargs) => yargs.option("owner", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.memory.jobClaim")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(svc.claimCaptureJob({ owner: args.owner as string }))
+    UI.println(JSON.stringify(out ?? null))
+  }),
+})
+
+export const MemoryJobCompleteCommand = effectCmd({
+  command: "job-complete <id>",
+  describe: "record a claimed capture job as done or failed",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .option("owner", { type: "string", demandOption: true })
+      .option("status", { type: "string", demandOption: true })
+      .option("error", { type: "string" }),
+  handler: Effect.fn("Cli.memory.jobComplete")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    yield* runJob(
+      svc.completeCaptureJob({
+        id: args.id as string,
+        owner: args.owner as string,
+        status: args.status as string,
+        error: (args.error as string | undefined) ?? undefined,
+      }),
+    )
+    UI.println("ok")
+  }),
+})
+
+export const MemoryJobRetryCommand = effectCmd({
+  command: "job-retry <id>",
+  describe: "requeue a failed capture job while its attempt budget lasts",
+  instance: false,
+  builder: (yargs) =>
+    yargs.positional("id", { type: "string", demandOption: true }).option("max-attempts", { type: "number" }),
+  handler: Effect.fn("Cli.memory.jobRetry")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    yield* runJob(
+      svc.requeueCaptureJob({
+        id: args.id as string,
+        maxAttempts: (args["max-attempts"] as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println("ok")
+  }),
+})
+
+export const MemoryJobReleaseCommand = effectCmd({
+  command: "job-release",
+  describe: "release running capture jobs untouched for longer than a cutoff back to pending",
+  instance: false,
+  builder: (yargs) => yargs.option("older-than-ms", { type: "number", demandOption: true }),
+  handler: Effect.fn("Cli.memory.jobRelease")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(svc.releaseStaleJobs({ olderThanMs: args["older-than-ms"] as number }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const MemoryJobListCommand = effectCmd({
+  command: "job-list",
+  describe: "list capture jobs, optionally filtered by status",
+  instance: false,
+  builder: (yargs) => yargs.option("status", { type: "string" }),
+  handler: Effect.fn("Cli.memory.jobList")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(svc.listCaptureJobs({ status: (args.status as string | undefined) ?? undefined }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const MemoryJobRunOnceCommand = effectCmd({
+  command: "job-run-once",
+  describe: "claim the oldest pending capture job and run its capture immediately",
+  instance: false,
+  builder: (yargs) => yargs.option("owner", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.memory.jobRunOnce")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(svc.runCaptureJobOnce({ owner: args.owner as string }))
+    UI.println(JSON.stringify(out))
   }),
 })

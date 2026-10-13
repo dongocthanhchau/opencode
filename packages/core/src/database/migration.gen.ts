@@ -54,5 +54,7 @@ export const migrations = (
     import("./migration/20261013005454_cvis_checks_revisions"),
     import("./migration/20261013010844_cvis_prompt_templates"),
     import("./migration/20261013030638_orchestration_verified_execution"),
+    import("./migration/20261013201225_cvis_managed_project"),
+    import("./migration/20261013202702_cvis_schedule"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

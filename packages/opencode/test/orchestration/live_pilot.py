@@ -20,6 +20,8 @@ PROJECT.mkdir()
 (PROJECT / "src").mkdir()
 (PROJECT / "src/pilot.ts").write_text("export function answer() { return 41 }\n")
 subprocess.run(["git", "init", "--quiet", str(PROJECT)], check=True)
+subprocess.run(["git", "-C", str(PROJECT), "add", "src/pilot.ts"], check=True)
+subprocess.run(["git", "-C", str(PROJECT), "-c", "user.name=CVIS Test", "-c", "user.email=cvis-test@example.invalid", "commit", "--quiet", "-m", "test fixture"], check=True)
 source = json.loads(Path("/home/chad/.config/opencode/opencode.json").read_text())
 model = os.environ.get("CVIS_PILOT_MODEL", source["model"])
 provider = model.split("/", 1)[0]
@@ -119,6 +121,7 @@ try:
     check("real V1 manager session admission",code==200 and "id" in mgr, {"id":mgr.get("id")})
     sid = mgr["id"]
     pid = mgr["projectID"]
+    check("pilot uses a real project identity rather than global fallback",pid!="global",pid)
     code, body = api("POST", "/cvis/bind", {"sessionID":sid,"projectID":pid,"role":"manager"})
     check("runtime manager binding",code==200,body)
     cli = subprocess.run([BIN,"cvis","goal-create","--project",pid,"--title","Pilot 42","--objective",
@@ -150,8 +153,12 @@ try:
       "Use cvis_revise_task with this taskID and description='Now implement src/pilot.ts so answer() returns 42. Use edit/write tools only inside src. No shell.' "
       "Then cvis_queue_task the same taskID. Supply fields directly, no nested arguments. Preserve acceptance and scope. Do not verify your own work or mark Done.")
     check("real manager repairs the plan",sql("SELECT status,revision FROM cvis_task WHERE id=?",(tid,))[0]=={"status":"queued","revision":2})
+    old_worker=sql("SELECT session_id FROM cvis_task_run WHERE task_id=? AND attempt=1",(tid,))[0]["session_id"]
+    check("archive former worker through real API",api("PATCH",f"/session/{old_worker}",{"time":{"archived":int(time.time()*1000)}})[0]==200)
     code,result = api("POST","/cvis/pump",{"managerSessionID":sid},timeout=480)
     check("real repaired worker/verifier cycle",code==200 and isinstance(result,list) and any(r["status"]=="done" for r in result),result)
+    next_worker=sql("SELECT session_id FROM cvis_task_run WHERE task_id=? AND attempt=2",(tid,))[0]["session_id"]
+    check("pump creates eligible replacement instead of reviving archived worker",next_worker!=old_worker and sql("SELECT time_archived FROM session WHERE id=?",(old_worker,))[0]["time_archived"] is not None,{"old":old_worker,"replacement":next_worker})
     check("implementation artifact exists and is changed", "42" in (PROJECT/"src/pilot.ts").read_text(), (PROJECT/"src/pilot.ts").read_text())
     check("independent artifact receipt recorded",bool(sql("SELECT id FROM cvis_check WHERE task_id=? AND verdict='pass' AND revision=2",(tid,))))
     check("verified task completed",sql("SELECT status FROM cvis_task WHERE id=?",(tid,))[0]["status"]=="done")
@@ -160,6 +167,16 @@ try:
     check("project goal evidence gate closes after actual work",sql("SELECT status FROM cvis_project_goal WHERE id=?",(gid,))[0]["status"]=="completed")
     code,snapshot = api("GET",f"/cvis/projects/{pid}")
     check("HTTP snapshot reflects verified completion",code==200 and snapshot["goals"][0]["percent"]==100,snapshot)
+    code,body=api("POST",f"/session/{sid}/summarize",{"providerID":provider,"modelID":model.split("/",1)[1],"auto":False},timeout=240)
+    check("real V1 compaction completes",code==200,body)
+    memories=[]
+    for _ in range(120):
+        memories=sql("SELECT id,project_id,vault_path FROM memory_fact WHERE session_id=?",(sid,))
+        if memories and memories[0]["vault_path"]:break
+        time.sleep(.5)
+    items=sql("SELECT id,project_id FROM memory_item WHERE session_id=?",(sid,))
+    check("compaction automatically captures project memory without capture CLI",bool(memories) and bool(items) and all(row["project_id"]==pid for row in memories+items),{"facts":len(memories),"items":len(items)})
+    check("automatic capture publishes note for committed facts",bool(memories) and memories[0]["vault_path"] is not None and Path(memories[0]["vault_path"]).exists(),memories)
     print("PILOT_ROOT",ROOT,flush=True)
 finally:
     stop()

@@ -1,0 +1,1817 @@
+{
+  "manager": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+  "project": "dc6b72fa40badc90ca0789a2c936aeee321998d9",
+  "goal": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+  "protected_sources": {
+    "packages/opencode/src/memory/capture.ts": "570281e3789471cd6ea1178defd3a1635c22f5fedbe28460bc4aa09bc27c478d",
+    "packages/opencode/src/memory/recall.ts": "bfddd57c32d2a21817c763d15aba5ade82bfe619b1d53f50335d9994b5136e91",
+    "packages/opencode/src/orchestration/control.ts": "e60ef58bd626d57fd97d1eb4ea29ea3ed30b32faea57d0dd42264989cb505d1e",
+    "packages/opencode/src/orchestration/harness.ts": "a3cfea1b2472a59d76a508bfe399b6bd0b08c29f4554698aadf9d71b730b18a6",
+    "packages/opencode/src/orchestration/policy.ts": "b45dfe3e97e6c4c0f01d0d62132a4ae370cb6c9f2d40374ad62f7b7a038438a8",
+    "packages/opencode/src/orchestration/service.ts": "d7d82ca42970420657b7d2995a03de5fa07317214a05e9ca811149aa76c00e18",
+    "packages/opencode/test/memory/relation.test.ts": "b28da36c63f70712e518fde4f525e46ab9014c948fc326d7da16acb06e7b14e9",
+    "packages/opencode/test/orchestration/http_faults.py": "f3364c11dcc60e953c9e3723d017640cac5d7dd4dd95f7b432ae1948d983fe06",
+    "packages/opencode/test/orchestration/live_pilot.py": "f269f45d9dce9d39fe4267734563da3aac2ed26ab60fbb48ac390705900d4814",
+    "packages/opencode/test/orchestration/policy-runtime.test.ts": "1a0dcee9eb0cc94c5409b5423716d7477f931fbe0888e8f9925ba4948f76ef90",
+    "packages/opencode/test/orchestration/security_integration.py": "52a2f4a1bad2f9c8ee4bfef4db2dbd7d1b6fe3a0e05ff5e48696e2f932b7e00f"
+  },
+  "observations": [
+    {
+      "stage": "admission",
+      "time": 1791898999,
+      "payload": {
+        "manager": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+        "project": "dc6b72fa40badc90ca0789a2c936aeee321998d9",
+        "goal": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+      }
+    },
+    {
+      "stage": "manager_request",
+      "time": 1791899009,
+      "payload": {
+        "message": "msg_13580f97a001CyMdEVk3i0v57C",
+        "text": "Task `task_b511a83b-52fb-42db-9bc1-9a89f931561d` has been successfully created and queued for the implementer to produce `CVIS-UPGRADE-PREFLIGHT.md`."
+      }
+    },
+    {
+      "stage": "dispatch_ready",
+      "time": 1791899009,
+      "payload": {
+        "task": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "CVIS-UPGRADE-PLAN.md",
+            "CVIS-UPGRADE-PREFLIGHT.md",
+            "packages/opencode/AGENTS.md",
+            "packages/core/src/project.ts",
+            "packages/opencode/src/project/project.ts",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/core/src/session/sql.ts",
+            "packages/opencode/src/orchestration",
+            "packages/opencode/src/memory",
+            "packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts",
+            "packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts",
+            "packages/opencode/test/orchestration",
+            "packages/opencode/test/memory"
+          ],
+          "write_paths": [
+            "CVIS-UPGRADE-PREFLIGHT.md"
+          ],
+          "tools": []
+        }
+      }
+    },
+    {
+      "stage": "pump",
+      "time": 1791899264,
+      "payload": [
+        {
+          "taskID": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+          "runID": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+          "status": "verifying",
+          "text": "Đã hoàn thành việc đọc `CVIS-UPGRADE-PLAN.md`, kiểm tra source code thực tế và viết tài liệu `CVIS-UPGRADE-PREFLIGHT.md` bằng tiếng Việt theo đúng các tiêu chí acceptance P0."
+        },
+        {
+          "taskID": "task_d46770b7-d43c-454d-aae8-24c239416197",
+          "runID": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+          "status": "failed",
+          "text": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+        }
+      ]
+    },
+    {
+      "stage": "status",
+      "time": 1791899264,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 19,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "active",
+              "percent": 0,
+              "used": 265156,
+              "cap": 650000
+            }
+          ],
+          "columns": [
+            {
+              "status": "verifying",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_b511a83b-52fb-42db-9bc1-9a89f931561d"
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "verifying",
+            "revision": 1,
+            "attempt": 1,
+            "active_run_id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[]}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "verifying",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": null
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 0,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          }
+        ],
+        "checks": [],
+        "unexpected_source_changes": {},
+        "artifact_exists": true,
+        "artifact_sha256": "f4df0cf9db91b22a9860eaa543b05eff8b7155e9195d74d9d37d52319c3644da"
+      }
+    },
+    {
+      "stage": "manager_review_intervention",
+      "time": 1791899421,
+      "payload": {
+        "message": "msg_1358740b9001oqb0mlGZRn563d",
+        "text": "Task `task_d46770b7-d43c-454d-aae8-24c239416197` has been successfully revised and queued for verification."
+      }
+    },
+    {
+      "stage": "status",
+      "time": 1791899421,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 21,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "active",
+              "percent": 0,
+              "used": 352246,
+              "cap": 650000
+            }
+          ],
+          "columns": [
+            {
+              "status": "verifying",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "queued",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_b511a83b-52fb-42db-9bc1-9a89f931561d"
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "verifying",
+            "revision": 1,
+            "attempt": 1,
+            "active_run_id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[]}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "queued",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "verifying",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": null
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 0,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          }
+        ],
+        "checks": [],
+        "unexpected_source_changes": {},
+        "artifact_exists": true,
+        "artifact_sha256": "f4df0cf9db91b22a9860eaa543b05eff8b7155e9195d74d9d37d52319c3644da"
+      }
+    },
+    {
+      "stage": "manager_intervention",
+      "time": 1791899575,
+      "payload": {
+        "message": "msg_135899e81001DH2vlOHmbPjg0i",
+        "text": "Task `task_b511a83b-52fb-42db-9bc1-9a89f931561d` has been revised with precise observer feedback and re-queued."
+      }
+    },
+    {
+      "stage": "status",
+      "time": 1791899575,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 26,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "active",
+              "percent": 0,
+              "used": 448255,
+              "cap": 650000
+            }
+          ],
+          "columns": [
+            {
+              "status": "queued",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "cancelled",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "queued",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[]}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": "task paused"
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 0,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          }
+        ],
+        "checks": [],
+        "unexpected_source_changes": {},
+        "artifact_exists": true,
+        "artifact_sha256": "f4df0cf9db91b22a9860eaa543b05eff8b7155e9195d74d9d37d52319c3644da"
+      }
+    },
+    {
+      "stage": "observer_context_rotation",
+      "time": 1791899723,
+      "payload": {
+        "archived": [
+          "ses_eca7e3e5affedmHrzPmUf9c6tr",
+          "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7"
+        ],
+        "reason": "Fresh scoped sessions after evidence-based revision; previous context and invalid verifier calls remain in history; no data deletion"
+      }
+    },
+    {
+      "stage": "status",
+      "time": 1791899761,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 36,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "active",
+              "percent": 0,
+              "used": 699376,
+              "cap": 650000
+            }
+          ],
+          "columns": [
+            {
+              "status": "verifying",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "cancelled",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "queued",
+              "tasks": [
+                {
+                  "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_b511a83b-52fb-42db-9bc1-9a89f931561d"
+            },
+            {
+              "session": "ses_eca73b995ffeucV7AnAvXuEoUi",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "verifying",
+            "revision": 2,
+            "attempt": 2,
+            "active_run_id": "run_8cdcba5f-4ecc-4903-b352-79eda8757e66",
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[]}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          },
+          {
+            "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "queued",
+            "revision": 1,
+            "attempt": 0,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":2}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": "task paused"
+          },
+          {
+            "id": "run_8cdcba5f-4ecc-4903-b352-79eda8757e66",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+            "status": "verifying",
+            "revision": 2,
+            "attempt": 2,
+            "tokens_used": 251121,
+            "error": null
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 0,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          }
+        ],
+        "checks": [],
+        "unexpected_source_changes": {},
+        "artifact_exists": true,
+        "artifact_sha256": "7ed0356a044125d272798d14f83511b2813412b65d373ecf8079654734d4ccb0"
+      }
+    },
+    {
+      "stage": "budget_checkpoint",
+      "time": 1791899975,
+      "payload": {
+        "reason": "Reported usage exceeded the 650000 goal budget; new verifier admission was rejected. No budget increase or fabricated checks. P0 remains unverified; preserve artifact and pending review for explicit next decision."
+      }
+    },
+    {
+      "stage": "status",
+      "time": 1791899975,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 39,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "paused",
+              "percent": 0,
+              "used": 699376,
+              "cap": 650000
+            }
+          ],
+          "columns": [
+            {
+              "status": "paused",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "cancelled",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "queued",
+              "tasks": [
+                {
+                  "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca73b995ffeucV7AnAvXuEoUi",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "paused",
+            "revision": 2,
+            "attempt": 2,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[]}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          },
+          {
+            "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "queued",
+            "revision": 1,
+            "attempt": 0,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":2}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": "task paused"
+          },
+          {
+            "id": "run_8cdcba5f-4ecc-4903-b352-79eda8757e66",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 2,
+            "tokens_used": 251121,
+            "error": "task paused"
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 0,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          }
+        ],
+        "checks": [],
+        "unexpected_source_changes": {},
+        "artifact_exists": true,
+        "artifact_sha256": "7ed0356a044125d272798d14f83511b2813412b65d373ecf8079654734d4ccb0"
+      }
+    },
+    {
+      "stage": "status",
+      "time": 1791900933,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 39,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "paused",
+              "percent": 0,
+              "used": 699376,
+              "cap": 650000
+            }
+          ],
+          "columns": [
+            {
+              "status": "paused",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "cancelled",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "queued",
+              "tasks": [
+                {
+                  "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca73b995ffeucV7AnAvXuEoUi",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "paused",
+            "revision": 2,
+            "attempt": 2,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[]}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          },
+          {
+            "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "queued",
+            "revision": 1,
+            "attempt": 0,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":2}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": "task paused"
+          },
+          {
+            "id": "run_8cdcba5f-4ecc-4903-b352-79eda8757e66",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 2,
+            "tokens_used": 251121,
+            "error": "task paused"
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 0,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          }
+        ],
+        "checks": [],
+        "unexpected_source_changes": {},
+        "artifact_exists": true,
+        "artifact_sha256": "7ed0356a044125d272798d14f83511b2813412b65d373ecf8079654734d4ccb0"
+      }
+    },
+    {
+      "stage": "manager_completion",
+      "time": 1791909662,
+      "payload": {
+        "message": "msg_136238355001GsryrU8anGfLuD",
+        "text": "P0 task `task_b511a83b-52fb-42db-9bc1-9a89f931561d` has completed successfully with independent verification pass (`task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9`), resulting in the creation of `CVIS-UPGRADE-PREFLIGHT.md`. P1-P10 stages remain planned and are not implemented. Awaiting next milestone approval."
+      }
+    },
+    {
+      "stage": "status",
+      "time": 1791909662,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 148,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "active",
+              "percent": 50,
+              "used": 2603171,
+              "cap": 4000000
+            },
+            {
+              "id": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+              "title": "P0.1 CVIS orchestration bootstrap fixes",
+              "status": "active",
+              "percent": 0,
+              "used": 7994884,
+              "cap": 8000000
+            }
+          ],
+          "columns": [
+            {
+              "status": "done",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9",
+                  "title": "P0 final independent review",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "cancelled",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "queued",
+              "tasks": [
+                {
+                  "id": "task_db0d6c76-01a2-43c4-a970-aa669db1faac",
+                  "title": "P0.1 F1: preserve tool scope budgets and authoritative review identity",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "verifying",
+              "tasks": [
+                {
+                  "id": "task_cddb1172-6068-44a3-ab73-a4ee4651fbc6",
+                  "title": "P0.1 finalize usage on all exits and compact assignment context",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_3e0c6307-5347-499a-ba6f-3c3d2c7cb578",
+                  "title": "P0.1 wire trusted operator budget route",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_3cc4ca8c-45ad-456c-a78d-aecb92b77c84",
+                  "title": "P0.1 implement isolated budget helper without rewriting runtime modules",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "paused",
+              "tasks": [
+                {
+                  "id": "task_721b4f71-18c1-40f4-bba2-3b1b7ebb4148",
+                  "title": "P0.1 add authenticated operator budget CAS service",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_cb6bd422-8c81-4523-afc3-43f1851cbc7b",
+                  "title": "P0.1 live budget admission, output caps and controlled task budget updates",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "tasks": [
+                {
+                  "id": "task_fc50a28b-5dc8-40fc-bbef-49cfed506c9d",
+                  "title": "P0 final independent review",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca73b995ffeucV7AnAvXuEoUi",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca558136ffegdUdtx3vvcexIJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47b3ffeC2NPhsICz7X0nc",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47baffeGglI0xEuXQ9iiO",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47aeffe7GpaMTKTejdryA",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4129f1ffeXU1DWJ4vLUUvu7",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca3cbadfffeaVKDU3XboIZpkx",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_cddb1172-6068-44a3-ab73-a4ee4651fbc6"
+            },
+            {
+              "session": "ses_eca3cbaedffeqNxOmA48l0rGSW",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca355718ffevwwO1VownJRE4h",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_3e0c6307-5347-499a-ba6f-3c3d2c7cb578"
+            },
+            {
+              "session": "ses_eca2c269affeK9e4lUiWHurOwY",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca209c74ffedMLdlPffQEmOh9",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca1b3ffaffe6CAETMoAw7Zmig",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_3cc4ca8c-45ad-456c-a78d-aecb92b77c84"
+            },
+            {
+              "session": "ses_ec9eb8093ffe1UUgYj2AthPFqU",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9e94938ffeBoaakRTaVzsNYF",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9df6cc4ffel7uMdJz7W449Zn",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "done",
+            "revision": 4,
+            "attempt": 4,
+            "active_run_id": "run_e92cd6a8-3908-49cb-be77-226cfe7bb3cc",
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[],\"max_tokens\":1800000}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          },
+          {
+            "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 0,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":2}"
+          },
+          {
+            "id": "task_fc50a28b-5dc8-40fc-bbef-49cfed506c9d",
+            "title": "P0 final independent review",
+            "role": "verifier",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[],\"tools\":[],\"max_tokens\":700000,\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":3}"
+          },
+          {
+            "id": "task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9",
+            "title": "P0 final independent review",
+            "role": "verifier",
+            "status": "done",
+            "revision": 1,
+            "attempt": 1,
+            "active_run_id": "run_e80e5b26-9fa8-475a-9b99-0fa950742232",
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[],\"tools\":[],\"max_tokens\":700000,\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":4}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": "task paused"
+          },
+          {
+            "id": "run_8cdcba5f-4ecc-4903-b352-79eda8757e66",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 2,
+            "tokens_used": 251121,
+            "error": "task paused"
+          },
+          {
+            "id": "run_c1559586-6106-4af6-9c70-88ad591c2782",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_ec9eb8093ffe1UUgYj2AthPFqU",
+            "status": "failed",
+            "revision": 3,
+            "attempt": 3,
+            "tokens_used": 518799,
+            "error": "Provider returned an empty delivery"
+          },
+          {
+            "id": "run_e92cd6a8-3908-49cb-be77-226cfe7bb3cc",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_ec9df6cc4ffel7uMdJz7W449Zn",
+            "status": "done",
+            "revision": 4,
+            "attempt": 4,
+            "tokens_used": 170883,
+            "error": null
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 81359,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          },
+          {
+            "id": "run_6848c8da-0d00-42f1-b5f6-e07236fb22e2",
+            "task_id": "task_fc50a28b-5dc8-40fc-bbef-49cfed506c9d",
+            "session_id": "ses_ec9e94938ffeBoaakRTaVzsNYF",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 713161,
+            "error": "CvisPolicyDenied: Task token budget exhausted\n    at <anonymous> (/$bunfs/root/chunk-f2kkq773.js:30:2730)\n    at SessionPrompt.run (/$bunfs/root/chunk-f2kkq773.js:50:15341)\n    at SessionPrompt.run (definition) (/$bunfs/root/chunk-f2kkq773.js:50:10077)\n    at SessionRunState.ensureRunning (/$bunfs/root/chunk-f2kkq773.js:50:15310)\n    at SessionRunState.ensureRunning (definition) (/$bunfs/root/chunk-ms3fxa9f.js:32:24514)\n    at SessionPrompt.loop (/$bunfs/root/chunk-f2kkq773.js:50:9827)\n    at SessionPrompt.loop (definition) (/$bunfs/root/chunk-f2kkq773.js:50:15245)\n    at SessionPrompt.prompt (/$bunfs/root/chunk-xzb4xjq4.js:11:387)\n    at SessionPrompt.prompt (definition) (/$bunfs/root/chunk-f2kkq773.js:50:9439)\n    at CvisHarness.execute (/$bunfs/root/chunk-xzb4xjq4.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-xzb4xjq4.js:5:25471)"
+          },
+          {
+            "id": "run_e80e5b26-9fa8-475a-9b99-0fa950742232",
+            "task_id": "task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9",
+            "session_id": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "status": "done",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 313501,
+            "error": null
+          }
+        ],
+        "checks": [
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "baseline",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PLAN.md\",\"sha256\":\"7d33c607cbef89804c13523ff04e89e44ea827a4b145d4709c76c1e34da6546d\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/src/project/project.ts\",\"sha256\":\"d78c7c095d488b14448a55f02563c8c0f4ca3fb2c1dc1eb713d95a64ff3bd20d\"},{\"path\":\"/home/chad/opencode-fork/packages/core/src/session/sql.ts\",\"sha256\":\"936c00800fd658c75e923485fcb3dd77c3ea697ccc7504b74cd05451e7afda69\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/src/memory/recall.ts\",\"sha256\":\"bfddd57c32d2a21817c763d15aba5ade82bfe619b1d53f50335d9994b5136e91\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/test/orchestration/p01-evidence.json\",\"sha256\":\"4ab574926153d1e173e8e53d7fbb992408e336431746c90e2e2dd1112e170124\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT.md cites actual source paths and accurately identifies all five required baseline concerns:\\n\\n1. Native project identity migration: PREFLIGHT §1 cites project.ts lines 146-193 for migrateProjectId(); source confirmed at project.ts:146-193 — transaction wraps INSERT+UPDATE+DELETE on ProjectTable, SessionTable, WorkspaceTable. The CASCADE delete risk is real and accurately named (SessionTable.project_id has onDelete:\\\"cascade\\\" per sql.ts:29; MemoryFactTable.project_id has onDelete:\\\"cascade\\\" per sql.ts:187; MemoryItemTable.project_id has onDelete:\\\"cascade\\\" per sql.ts:241).\\n\\n2. FTS-gated recall: PREFLIGHT §1 cites recall.ts lines 53-300; source confirmed — recall.ts:99-112 performs FTS MATCH query filtered by project_id, then proceeds to embedding rerank. Not independent lexical+vector; correctly identified as FTS-gated then embedding rerank.\\n\\n3. Missing memory scope ACL: PREFLIGHT §1 notes MemoryFactTable and MemoryItemTable use project_id/session_id as provenance only; no dedicated ACL table in schema. Source sql.ts:178-310 confirms: memory tables carry project_id/session_id columns but have no ACL columns or ACL table.\\n\\n4. Legacy queue migration: PREFLIGHT §1 correctly identifies cvis-queue / RESULT:done risk; PLAN §2 confirms this at plan line 27.\\n\\n5. Artifact-only verifier limitations: PREFLIGHT §1 explicitly states verifiers lack an isolated command executor; PLAN §2 line 21 corroborates.\\n\\nBaseline supplied by plan for runner behavior outside read scope is explicitly noted. All citations are accurate and grounded in real source files.\",\"revision\":4,\"attempt\":4}"
+          },
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "architecture",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PLAN.md\",\"sha256\":\"7d33c607cbef89804c13523ff04e89e44ea827a4b145d4709c76c1e34da6546d\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT §2 covers all required architecture elements:\\n\\n1. Three core projects CVIS/CVIScode/CVISmem: §2.1 describes each with ownership and restriction constraints, matching PLAN §3.1 table.\\n\\n2. Personal cross-channel identity: §2.2 covers Telegram, Zalo, web, Xiaozhi sharing unified user identity with independent adapter envelopes and dedup by source identity/message ID.\\n\\n3. Isolated Assistant Apps: §2.2 covers project-isolated Assistant Apps with independent mission, knowledge corpus, allowed tools/MCP, runtime budgets, and serving agent separated from management API.\\n\\n4. Five memory scopes: §2.3 enumerates Session, Channel/device, Project, User-shared, System-shared — matching PLAN §5.1.\\n\\n5. Ownership/capabilities: §2.1 specifies ownership boundaries for each project (CVIS: routing/registry; CVIScode: execution audit; CVISmem: ingest/retrieval) and capability restrictions.\\n\\n6. Stable managed registry separate from Git: §2.3 explicitly states \\\"Registry độc lập ngoài Git repo (managed registry database/JSON manifest). Native repository ID chỉ là liên kết placement/source, không phải là định nghĩa quản trị duy nhất.\\\" This matches PLAN §3.2 contract requirements.\",\"revision\":4,\"attempt\":4}"
+          },
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "rollout",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PLAN.md\",\"sha256\":\"7d33c607cbef89804c13523ff04e89e44ea827a4b145d4709c76c1e34da6546d\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/src/project/project.ts\",\"sha256\":\"d78c7c095d488b14448a55f02563c8c0f4ca3fb2c1dc1eb713d95a64ff3bd20d\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT §3 and §4 cover all required rollout elements:\\n\\n1. Concrete P1 patch sequence: §4.1 gives three numbered patches — (1) Managed Registry Schema, (2) Fix CASCADE data-loss in migrateProjectId by remapping child records before DELETE, (3) P1 Memory ACL Contract. Source-grounded: patch 2 directly addresses project.ts:188 DELETE risk confirmed in source.\\n\\n2. P0-P10 dependency/acceptance review: §3 table covers all 11 phases with core objective and gap/risk per phase. PLAN §9 dependency chain (P0→P1→P2; P3/P4 post-P2; P5/P6 need P3+P4; P7 needs P3/P4; P8/P9 need foundations; P10 last) is referenced and understood in the gap analysis.\\n\\n3. Migration preservation/idempotency/rollback: §4.2 provides: idempotency via IF NOT EXISTS / slug checks; preservation transaction (ACID wrap, no delete before child tables remapped); rollback strategy (service stops accepting transitions, transaction rollback, backup preservation, no raw DB restore).\\n\\n4. Scheduler/executor gaps: §3 table for P3 explicitly identifies missing container/sandbox isolation for arbitrary command execution; §1 identifies artifact-only verifier limitation with no isolated executor; PLAN §4 confirms this gap.\\n\\n5. Meaningful negative tests: §4.3 lists five concrete test cases: Same-Git (independence), Non-Git (stable ID without commit hash), Change-Remote (stable managed ID through remote change), Ambiguous-Map (conflict requires manual review, rejects auto-global grouping), Idempotency (no duplicate records on repeated migration). These are distinct negative/edge cases.\",\"revision\":4,\"attempt\":4}"
+          },
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "honesty",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/test/orchestration/p01-evidence.json\",\"sha256\":\"4ab574926153d1e173e8e53d7fbb992408e336431746c90e2e2dd1112e170124\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT satisfies all honesty requirements:\\n\\n1. Explicitly a preflight/design recommendation, not implemented: Header states \\\"P0 Design & Architecture Preflight (Artifact-only, không sửa code/config/services/cron)\\\"; §3 table row P0 states \\\"Artifact-only; không thực hiện thay đổi code/config trong P0\\\"; §6 Honesty Statement: \\\"Future architectural phases P1 through P10 remain proposed designs and are not implemented.\\\"\\n\\n2. Lists blockers and approvals: §3 gap analysis identifies blockers per phase (CASCADE delete risk, missing container isolation, ACL not yet implemented, etc.); PLAN §10 approvals required for P1+ listed.\\n\\n3. Does not fabricate executed tests: §6 states \\\"Operator ran tests and verified P0.1 fixes\\\" — attributing execution to the operator, not the agent. The evidence file (p01-evidence.json) at line 2 states \\\"operator-verified implementation; independent P0 review pending\\\" and interventions list at line 77 \\\"operator executed tests/build because managed shell/executor unavailable.\\\" The preflight does not claim the agent itself executed tests.\\n\\n4. Preserves source/config/legacy jobs: Task description requires no source/config/service changes; the preflight document contains no code changes. The evidence file confirms source changes are uncommitted (limits field: \\\"source changes remain uncommitted\\\"). Legacy cvis-queue preservation is addressed in P5 legacy adapter design.\\n\\n5. Baseline-supplied plan assertions explicitly marked: §1 states \\\"Baseline Supplied by Plan: Các xác nhận về legacy runner và hành vi thực thi cơ bản được cung cấp bởi CVIS-UPGRADE-PLAN.md vì source thực thi runner nằm ngoài phạm vi đọc trực tiếp của P0.\\\"\\n\\nAll honesty criteria are met.\",\"revision\":4,\"attempt\":4}"
+          }
+        ],
+        "unexpected_source_changes": {
+          "packages/opencode/src/orchestration/control.ts": {
+            "before": "e60ef58bd626d57fd97d1eb4ea29ea3ed30b32faea57d0dd42264989cb505d1e",
+            "after": "394205196b698f9686c66071fee827fd36cf34dcd5ef8bb3607130df5d0eb4f3"
+          },
+          "packages/opencode/src/orchestration/harness.ts": {
+            "before": "a3cfea1b2472a59d76a508bfe399b6bd0b08c29f4554698aadf9d71b730b18a6",
+            "after": "1b1d634366ced67a144707a45e2912771eaec59429549659a5350a20de973b25"
+          },
+          "packages/opencode/src/orchestration/policy.ts": {
+            "before": "b45dfe3e97e6c4c0f01d0d62132a4ae370cb6c9f2d40374ad62f7b7a038438a8",
+            "after": "cafe6e429f93d21f14176aa5a554e2904344b466158b96b34b563ec0200993fc"
+          },
+          "packages/opencode/src/orchestration/service.ts": {
+            "before": "d7d82ca42970420657b7d2995a03de5fa07317214a05e9ca811149aa76c00e18",
+            "after": "fae52dfbe6fc621dd1abe247ab05418ad203caa5be38c59b7c8e0caa307d389d"
+          }
+        },
+        "artifact_exists": true,
+        "artifact_sha256": "08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb"
+      }
+    },
+    {
+      "stage": "manager_completion",
+      "time": 1791909891,
+      "payload": {
+        "message": "msg_13627050d001lWRnUP1XKIRK3T",
+        "text": "P0 task `task_b511a83b-52fb-42db-9bc1-9a89f931561d` has been verified successfully and Goal `goal_92c44084-346a-44e3-9fd4-32e7eaecc455` is now marked **completed**. \n\nStages P1-P10 are planned via `CVIS-UPGRADE-PREFLIGHT.md` and are not implemented. Awaiting next milestone approval."
+      }
+    },
+    {
+      "stage": "status",
+      "time": 1791909891,
+      "payload": {
+        "snapshot": {
+          "eventCursor": 149,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "completed",
+              "percent": 100,
+              "used": 2660175,
+              "cap": 4000000
+            },
+            {
+              "id": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+              "title": "P0.1 CVIS orchestration bootstrap fixes",
+              "status": "active",
+              "percent": 0,
+              "used": 8081637,
+              "cap": 8000000
+            }
+          ],
+          "columns": [
+            {
+              "status": "done",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9",
+                  "title": "P0 final independent review",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "cancelled",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            },
+            {
+              "status": "queued",
+              "tasks": [
+                {
+                  "id": "task_db0d6c76-01a2-43c4-a970-aa669db1faac",
+                  "title": "P0.1 F1: preserve tool scope budgets and authoritative review identity",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "verifying",
+              "tasks": [
+                {
+                  "id": "task_cddb1172-6068-44a3-ab73-a4ee4651fbc6",
+                  "title": "P0.1 finalize usage on all exits and compact assignment context",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_3e0c6307-5347-499a-ba6f-3c3d2c7cb578",
+                  "title": "P0.1 wire trusted operator budget route",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_3cc4ca8c-45ad-456c-a78d-aecb92b77c84",
+                  "title": "P0.1 implement isolated budget helper without rewriting runtime modules",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "paused",
+              "tasks": [
+                {
+                  "id": "task_721b4f71-18c1-40f4-bba2-3b1b7ebb4148",
+                  "title": "P0.1 add authenticated operator budget CAS service",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_cb6bd422-8c81-4523-afc3-43f1851cbc7b",
+                  "title": "P0.1 live budget admission, output caps and controlled task budget updates",
+                  "role": "implementer",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "tasks": [
+                {
+                  "id": "task_fc50a28b-5dc8-40fc-bbef-49cfed506c9d",
+                  "title": "P0 final independent review",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca73b995ffeucV7AnAvXuEoUi",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca558136ffegdUdtx3vvcexIJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47b3ffeC2NPhsICz7X0nc",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47baffeGglI0xEuXQ9iiO",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47aeffe7GpaMTKTejdryA",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4129f1ffeXU1DWJ4vLUUvu7",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca3cbadfffeaVKDU3XboIZpkx",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_cddb1172-6068-44a3-ab73-a4ee4651fbc6"
+            },
+            {
+              "session": "ses_eca3cbaedffeqNxOmA48l0rGSW",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca355718ffevwwO1VownJRE4h",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_3e0c6307-5347-499a-ba6f-3c3d2c7cb578"
+            },
+            {
+              "session": "ses_eca2c269affeK9e4lUiWHurOwY",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca209c74ffedMLdlPffQEmOh9",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca1b3ffaffe6CAETMoAw7Zmig",
+              "role": "implementer",
+              "status": "busy",
+              "task": "task_3cc4ca8c-45ad-456c-a78d-aecb92b77c84"
+            },
+            {
+              "session": "ses_ec9eb8093ffe1UUgYj2AthPFqU",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9e94938ffeBoaakRTaVzsNYF",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9df6cc4ffel7uMdJz7W449Zn",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        },
+        "tasks": [
+          {
+            "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "title": "P0 source-grounded upgrade preflight",
+            "role": "implementer",
+            "status": "done",
+            "revision": 4,
+            "attempt": 4,
+            "active_run_id": "run_e92cd6a8-3908-49cb-be77-226cfe7bb3cc",
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[\"CVIS-UPGRADE-PREFLIGHT.md\"],\"tools\":[],\"max_tokens\":1800000}"
+          },
+          {
+            "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":1}"
+          },
+          {
+            "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+            "title": "Review: P0 source-grounded upgrade preflight",
+            "role": "verifier",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 0,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":2}"
+          },
+          {
+            "id": "task_fc50a28b-5dc8-40fc-bbef-49cfed506c9d",
+            "title": "P0 final independent review",
+            "role": "verifier",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "active_run_id": null,
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[],\"tools\":[],\"max_tokens\":700000,\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":3}"
+          },
+          {
+            "id": "task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9",
+            "title": "P0 final independent review",
+            "role": "verifier",
+            "status": "done",
+            "revision": 1,
+            "attempt": 1,
+            "active_run_id": "run_e80e5b26-9fa8-475a-9b99-0fa950742232",
+            "scope": "{\"read_paths\":[\"AGENTS.md\",\"CVIS-UPGRADE-PLAN.md\",\"CVIS-UPGRADE-PREFLIGHT.md\",\"packages/opencode/AGENTS.md\",\"packages/core/src/project.ts\",\"packages/opencode/src/project/project.ts\",\"packages/core/src/orchestration/sql.ts\",\"packages/core/src/session/sql.ts\",\"packages/opencode/src/orchestration\",\"packages/opencode/src/memory\",\"packages/opencode/src/server/routes/instance/httpapi/groups/cvis.ts\",\"packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts\",\"packages/opencode/test/orchestration\",\"packages/opencode/test/memory\"],\"write_paths\":[],\"tools\":[],\"max_tokens\":700000,\"review_task_id\":\"task_b511a83b-52fb-42db-9bc1-9a89f931561d\",\"review_revision\":4}"
+          }
+        ],
+        "runs": [
+          {
+            "id": "run_ca095951-a889-4ecc-8526-9004e3d9dc95",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+            "status": "cancelled",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 208058,
+            "error": "task paused"
+          },
+          {
+            "id": "run_8cdcba5f-4ecc-4903-b352-79eda8757e66",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+            "status": "cancelled",
+            "revision": 2,
+            "attempt": 2,
+            "tokens_used": 251121,
+            "error": "task paused"
+          },
+          {
+            "id": "run_c1559586-6106-4af6-9c70-88ad591c2782",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_ec9eb8093ffe1UUgYj2AthPFqU",
+            "status": "failed",
+            "revision": 3,
+            "attempt": 3,
+            "tokens_used": 518799,
+            "error": "Provider returned an empty delivery"
+          },
+          {
+            "id": "run_e92cd6a8-3908-49cb-be77-226cfe7bb3cc",
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "session_id": "ses_ec9df6cc4ffel7uMdJz7W449Zn",
+            "status": "done",
+            "revision": 4,
+            "attempt": 4,
+            "tokens_used": 170883,
+            "error": null
+          },
+          {
+            "id": "run_31791134-92e3-48e0-a0a7-f1e5de508064",
+            "task_id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+            "session_id": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 81359,
+            "error": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-9ftmd2bp.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-9ftmd2bp.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-9ftmd2bp.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-9ftmd2bp.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-ytna9x2d.js:12:2276)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-ytna9x2d.js:5:25005)\n    at CvisHarness.pump (/$bunfs/root/chunk-ytna9x2d.js:12:4321)\n    at CvisHarness.pump (definition) (/$bunfs/root/chunk-ytna9x2d.js:12:811)\n    at Server.listen (/$bunfs/root/chunk-ytna9x2d.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-ytna9x2d.js:21:13373)"
+          },
+          {
+            "id": "run_6848c8da-0d00-42f1-b5f6-e07236fb22e2",
+            "task_id": "task_fc50a28b-5dc8-40fc-bbef-49cfed506c9d",
+            "session_id": "ses_ec9e94938ffeBoaakRTaVzsNYF",
+            "status": "failed",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 713161,
+            "error": "CvisPolicyDenied: Task token budget exhausted\n    at <anonymous> (/$bunfs/root/chunk-f2kkq773.js:30:2730)\n    at SessionPrompt.run (/$bunfs/root/chunk-f2kkq773.js:50:15341)\n    at SessionPrompt.run (definition) (/$bunfs/root/chunk-f2kkq773.js:50:10077)\n    at SessionRunState.ensureRunning (/$bunfs/root/chunk-f2kkq773.js:50:15310)\n    at SessionRunState.ensureRunning (definition) (/$bunfs/root/chunk-ms3fxa9f.js:32:24514)\n    at SessionPrompt.loop (/$bunfs/root/chunk-f2kkq773.js:50:9827)\n    at SessionPrompt.loop (definition) (/$bunfs/root/chunk-f2kkq773.js:50:15245)\n    at SessionPrompt.prompt (/$bunfs/root/chunk-xzb4xjq4.js:11:387)\n    at SessionPrompt.prompt (definition) (/$bunfs/root/chunk-f2kkq773.js:50:9439)\n    at CvisHarness.execute (/$bunfs/root/chunk-xzb4xjq4.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-xzb4xjq4.js:5:25471)"
+          },
+          {
+            "id": "run_e80e5b26-9fa8-475a-9b99-0fa950742232",
+            "task_id": "task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9",
+            "session_id": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "status": "done",
+            "revision": 1,
+            "attempt": 1,
+            "tokens_used": 313501,
+            "error": null
+          }
+        ],
+        "checks": [
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "baseline",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PLAN.md\",\"sha256\":\"7d33c607cbef89804c13523ff04e89e44ea827a4b145d4709c76c1e34da6546d\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/src/project/project.ts\",\"sha256\":\"d78c7c095d488b14448a55f02563c8c0f4ca3fb2c1dc1eb713d95a64ff3bd20d\"},{\"path\":\"/home/chad/opencode-fork/packages/core/src/session/sql.ts\",\"sha256\":\"936c00800fd658c75e923485fcb3dd77c3ea697ccc7504b74cd05451e7afda69\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/src/memory/recall.ts\",\"sha256\":\"bfddd57c32d2a21817c763d15aba5ade82bfe619b1d53f50335d9994b5136e91\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/test/orchestration/p01-evidence.json\",\"sha256\":\"4ab574926153d1e173e8e53d7fbb992408e336431746c90e2e2dd1112e170124\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT.md cites actual source paths and accurately identifies all five required baseline concerns:\\n\\n1. Native project identity migration: PREFLIGHT §1 cites project.ts lines 146-193 for migrateProjectId(); source confirmed at project.ts:146-193 — transaction wraps INSERT+UPDATE+DELETE on ProjectTable, SessionTable, WorkspaceTable. The CASCADE delete risk is real and accurately named (SessionTable.project_id has onDelete:\\\"cascade\\\" per sql.ts:29; MemoryFactTable.project_id has onDelete:\\\"cascade\\\" per sql.ts:187; MemoryItemTable.project_id has onDelete:\\\"cascade\\\" per sql.ts:241).\\n\\n2. FTS-gated recall: PREFLIGHT §1 cites recall.ts lines 53-300; source confirmed — recall.ts:99-112 performs FTS MATCH query filtered by project_id, then proceeds to embedding rerank. Not independent lexical+vector; correctly identified as FTS-gated then embedding rerank.\\n\\n3. Missing memory scope ACL: PREFLIGHT §1 notes MemoryFactTable and MemoryItemTable use project_id/session_id as provenance only; no dedicated ACL table in schema. Source sql.ts:178-310 confirms: memory tables carry project_id/session_id columns but have no ACL columns or ACL table.\\n\\n4. Legacy queue migration: PREFLIGHT §1 correctly identifies cvis-queue / RESULT:done risk; PLAN §2 confirms this at plan line 27.\\n\\n5. Artifact-only verifier limitations: PREFLIGHT §1 explicitly states verifiers lack an isolated command executor; PLAN §2 line 21 corroborates.\\n\\nBaseline supplied by plan for runner behavior outside read scope is explicitly noted. All citations are accurate and grounded in real source files.\",\"revision\":4,\"attempt\":4}"
+          },
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "architecture",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PLAN.md\",\"sha256\":\"7d33c607cbef89804c13523ff04e89e44ea827a4b145d4709c76c1e34da6546d\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT §2 covers all required architecture elements:\\n\\n1. Three core projects CVIS/CVIScode/CVISmem: §2.1 describes each with ownership and restriction constraints, matching PLAN §3.1 table.\\n\\n2. Personal cross-channel identity: §2.2 covers Telegram, Zalo, web, Xiaozhi sharing unified user identity with independent adapter envelopes and dedup by source identity/message ID.\\n\\n3. Isolated Assistant Apps: §2.2 covers project-isolated Assistant Apps with independent mission, knowledge corpus, allowed tools/MCP, runtime budgets, and serving agent separated from management API.\\n\\n4. Five memory scopes: §2.3 enumerates Session, Channel/device, Project, User-shared, System-shared — matching PLAN §5.1.\\n\\n5. Ownership/capabilities: §2.1 specifies ownership boundaries for each project (CVIS: routing/registry; CVIScode: execution audit; CVISmem: ingest/retrieval) and capability restrictions.\\n\\n6. Stable managed registry separate from Git: §2.3 explicitly states \\\"Registry độc lập ngoài Git repo (managed registry database/JSON manifest). Native repository ID chỉ là liên kết placement/source, không phải là định nghĩa quản trị duy nhất.\\\" This matches PLAN §3.2 contract requirements.\",\"revision\":4,\"attempt\":4}"
+          },
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "rollout",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PLAN.md\",\"sha256\":\"7d33c607cbef89804c13523ff04e89e44ea827a4b145d4709c76c1e34da6546d\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/src/project/project.ts\",\"sha256\":\"d78c7c095d488b14448a55f02563c8c0f4ca3fb2c1dc1eb713d95a64ff3bd20d\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT §3 and §4 cover all required rollout elements:\\n\\n1. Concrete P1 patch sequence: §4.1 gives three numbered patches — (1) Managed Registry Schema, (2) Fix CASCADE data-loss in migrateProjectId by remapping child records before DELETE, (3) P1 Memory ACL Contract. Source-grounded: patch 2 directly addresses project.ts:188 DELETE risk confirmed in source.\\n\\n2. P0-P10 dependency/acceptance review: §3 table covers all 11 phases with core objective and gap/risk per phase. PLAN §9 dependency chain (P0→P1→P2; P3/P4 post-P2; P5/P6 need P3+P4; P7 needs P3/P4; P8/P9 need foundations; P10 last) is referenced and understood in the gap analysis.\\n\\n3. Migration preservation/idempotency/rollback: §4.2 provides: idempotency via IF NOT EXISTS / slug checks; preservation transaction (ACID wrap, no delete before child tables remapped); rollback strategy (service stops accepting transitions, transaction rollback, backup preservation, no raw DB restore).\\n\\n4. Scheduler/executor gaps: §3 table for P3 explicitly identifies missing container/sandbox isolation for arbitrary command execution; §1 identifies artifact-only verifier limitation with no isolated executor; PLAN §4 confirms this gap.\\n\\n5. Meaningful negative tests: §4.3 lists five concrete test cases: Same-Git (independence), Non-Git (stable ID without commit hash), Change-Remote (stable managed ID through remote change), Ambiguous-Map (conflict requires manual review, rejects auto-global grouping), Idempotency (no duplicate records on repeated migration). These are distinct negative/edge cases.\",\"revision\":4,\"attempt\":4}"
+          },
+          {
+            "task_id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+            "check_id": "honesty",
+            "verdict": "pass",
+            "revision": 4,
+            "verifier_session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+            "evidence": "{\"files\":[{\"path\":\"/home/chad/opencode-fork/CVIS-UPGRADE-PREFLIGHT.md\",\"sha256\":\"08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb\"},{\"path\":\"/home/chad/opencode-fork/packages/opencode/test/orchestration/p01-evidence.json\",\"sha256\":\"4ab574926153d1e173e8e53d7fbb992408e336431746c90e2e2dd1112e170124\"}],\"method\":\"artifact_review\",\"conclusion\":\"PREFLIGHT satisfies all honesty requirements:\\n\\n1. Explicitly a preflight/design recommendation, not implemented: Header states \\\"P0 Design & Architecture Preflight (Artifact-only, không sửa code/config/services/cron)\\\"; §3 table row P0 states \\\"Artifact-only; không thực hiện thay đổi code/config trong P0\\\"; §6 Honesty Statement: \\\"Future architectural phases P1 through P10 remain proposed designs and are not implemented.\\\"\\n\\n2. Lists blockers and approvals: §3 gap analysis identifies blockers per phase (CASCADE delete risk, missing container isolation, ACL not yet implemented, etc.); PLAN §10 approvals required for P1+ listed.\\n\\n3. Does not fabricate executed tests: §6 states \\\"Operator ran tests and verified P0.1 fixes\\\" — attributing execution to the operator, not the agent. The evidence file (p01-evidence.json) at line 2 states \\\"operator-verified implementation; independent P0 review pending\\\" and interventions list at line 77 \\\"operator executed tests/build because managed shell/executor unavailable.\\\" The preflight does not claim the agent itself executed tests.\\n\\n4. Preserves source/config/legacy jobs: Task description requires no source/config/service changes; the preflight document contains no code changes. The evidence file confirms source changes are uncommitted (limits field: \\\"source changes remain uncommitted\\\"). Legacy cvis-queue preservation is addressed in P5 legacy adapter design.\\n\\n5. Baseline-supplied plan assertions explicitly marked: §1 states \\\"Baseline Supplied by Plan: Các xác nhận về legacy runner và hành vi thực thi cơ bản được cung cấp bởi CVIS-UPGRADE-PLAN.md vì source thực thi runner nằm ngoài phạm vi đọc trực tiếp của P0.\\\"\\n\\nAll honesty criteria are met.\",\"revision\":4,\"attempt\":4}"
+          }
+        ],
+        "unexpected_source_changes": {
+          "packages/opencode/src/orchestration/control.ts": {
+            "before": "e60ef58bd626d57fd97d1eb4ea29ea3ed30b32faea57d0dd42264989cb505d1e",
+            "after": "394205196b698f9686c66071fee827fd36cf34dcd5ef8bb3607130df5d0eb4f3"
+          },
+          "packages/opencode/src/orchestration/harness.ts": {
+            "before": "a3cfea1b2472a59d76a508bfe399b6bd0b08c29f4554698aadf9d71b730b18a6",
+            "after": "1b1d634366ced67a144707a45e2912771eaec59429549659a5350a20de973b25"
+          },
+          "packages/opencode/src/orchestration/policy.ts": {
+            "before": "b45dfe3e97e6c4c0f01d0d62132a4ae370cb6c9f2d40374ad62f7b7a038438a8",
+            "after": "cafe6e429f93d21f14176aa5a554e2904344b466158b96b34b563ec0200993fc"
+          },
+          "packages/opencode/src/orchestration/service.ts": {
+            "before": "d7d82ca42970420657b7d2995a03de5fa07317214a05e9ca811149aa76c00e18",
+            "after": "aafe6dcfa559d1a5d5b72c2faa4e137e404e3a4465a098d3b3ee1dcc8b8fdf42"
+          }
+        },
+        "artifact_exists": true,
+        "artifact_sha256": "08ed875f305a98ef6088db2783f7ecdbf3967a8a48f2114aa8d53725098645eb"
+      }
+    }
+  ],
+  "task": "task_b511a83b-52fb-42db-9bc1-9a89f931561d"
+}

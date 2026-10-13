@@ -1,0 +1,1858 @@
+{
+  "manager": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+  "project": "dc6b72fa40badc90ca0789a2c936aeee321998d9",
+  "goal": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+  "tasks": {
+    "A-contracts": {
+      "id": "task_db0d6c76-01a2-43c4-a970-aa669db1faac",
+      "spec": {
+        "title": "P0.1 F1: preserve tool scope budgets and authoritative review identity",
+        "role": "implementer",
+        "description": "Implement focused F1 fixes, preserving existing uncommitted fixes. Read only relevant source, use narrow grep/read. Edit control-tool.ts and control.ts and add control-contract.test.ts. Existing Effect v4 beta: use Effect.catch/catchCause, not catchAll; no comments, no README. (1) Export/reuse a scope schema preserving max_tokens, commands, review_task_id/review_revision; max_tokens must be positive finite integer. Typed and generic create tools must not strip supported fields. Preserve existing caller compatibility. (2) For a bound review verifier derive authoritative target from its assigned review job scope; allow omitted taskID for verify; explicitly supplied wrong review/target ID is rejected with actionable valid target/checkIDs. Validate project/role/current revision before forwarding; unknown checkIDs return actual allowed list. Keep independent verifier/service gates and hard permissions. (3) Tool errors should carry actionable entity/id/from/to/reason rather than only tagged error name; limit fields, no sensitive payload dumps. (4) Add operator-only HTTP control operation goal_budget, NOT in model ControlTool enumeration/ControlActions. Require positive finite integer budgetTokens, mandatory expectedBudget (nullable cap) and nonempty reason. Call future Orchestration.updateGoalBudget({goalID,budgetTokens,expectedBudget,reason,actorSessionID: input.actor}); task C will add this service method. Do not implement service SQL yourself. Meaningful tests for scope decode preserving max_tokens and invalid values, target inference/wrong target, unknown check ID and errors. You cannot execute shell/tests; say tests added, not run. Make actual scoped source patches, not prose. This component may depend on task C for typecheck; report that dependency explicitly. Keep patch small, do not rewrite unrelated code.",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/tool/tool.ts",
+            "packages/opencode/test/orchestration"
+          ],
+          "write_paths": [
+            "packages/opencode/src/orchestration/control-tool.ts",
+            "packages/opencode/src/orchestration/control.ts",
+            "packages/opencode/test/orchestration/control-contract.test.ts"
+          ],
+          "tools": [],
+          "max_tokens": 400000
+        },
+        "acceptance": [
+          {
+            "id": "scope",
+            "label": "Supported scope budgets survive typed tool decoding; invalid budget values fail; existing valid calls remain compatible",
+            "weight": 25
+          },
+          {
+            "id": "review",
+            "label": "Review target/check IDs derive from assigned review context; wrong targets and unknown checks fail with actionable messages without bypassing verifier permissions",
+            "weight": 25
+          },
+          {
+            "id": "operator",
+            "label": "Budget-update command is operator-only, validates CAS/reason, and is absent from model tool operation catalog",
+            "weight": 25
+          },
+          {
+            "id": "evidence",
+            "label": "Focused meaningful tests added; no fake test-execution claims; scoped source changes and later operator typecheck/test receipts support delivery",
+            "weight": 25
+          }
+        ],
+        "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+      },
+      "sessions": [
+        "ses_eca558136ffegdUdtx3vvcexIJ",
+        "ses_eca4b47baffeGglI0xEuXQ9iiO",
+        "ses_eca4129f1ffeXU1DWJ4vLUUvu7",
+        "ses_ec9cb65b8ffehh8C63biJo20jN",
+        "ses_ec9a2738dffe3qwfi3f6ckRMKk"
+      ]
+    },
+    "B-usage-context": {
+      "id": "task_cddb1172-6068-44a3-ab73-a4ee4651fbc6",
+      "spec": {
+        "title": "P0.1 finalize usage on all exits and compact assignment context",
+        "role": "implementer",
+        "description": "Make actual scoped patches in harness.ts and new usage.ts, plus usage.test.ts. Preserve existing uncommitted fixes. Read harness.ts, handoffBrief in service.ts using grep/narrow offsets, and one existing test style. Do not read whole service.ts. Current Effect v4: catch/catchCause; Schema.Number.check(Schema.isInt(),Schema.isGreaterThanOrEqualTo(1)); no comments or docs. F2: execution must account tokens on success/failure/timeout/cancel, not only success. Wrap model execution and settlement with an uninterruptible ensuring finalizer which reloads Session token counters and updates CvisTaskRunTable.tokens_used monotonically by run ID, without touching closed run status/result or swallowing original error. Retain usage_baseline in run.result on successful submitResult too; mark usage_finalized in result if preserving all existing result fields safely. Shared new usage.ts export sumTokens(tokens) and runUsage(run,sessionTokens) that use stored tokens, baseline and live deltas without double counting; accommodate input/output/reasoning/cache. Use finalizer to finalize partial usage and ensure idempotency. Make execution deadline configurable from trusted env CVIS_EXECUTION_TIMEOUT_MS, bounded 1000..900000 default 180000. F4: replace full duplicated task-description/acceptance user prompt with concise instruction referencing authoritative handoff system context. Verifier prompt explicitly distinguishes reviewJobID from targetTaskID and exact target acceptance checkIDs fetched server-side; directs cvis_verify with targetTaskID or omitted target. Keep required context in handoff, permission ceilings and stale result protections. Pump must skip queued tasks whose goals are not active/exhausted, never let paused P0 queued review prevent new goals; prefer fresh workers instead of cross-task/failed-revision transcript reuse. No arbitrary shell grants. Add real unit tests of exported usage and assignment helpers (if extracted) for failure partial totals, cache, idempotency, missing baseline, concise context/target IDs. Do not duplicate logic into tests. Tests cannot be run by you; report this. Keep patch focused and finish within three minutes using edit, no long repository tour.",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/opencode/test/orchestration",
+            "packages/core/src/orchestration/sql.ts"
+          ],
+          "write_paths": [
+            "packages/opencode/src/orchestration/harness.ts",
+            "packages/opencode/src/orchestration/usage.ts",
+            "packages/opencode/test/orchestration/usage.test.ts"
+          ],
+          "tools": [],
+          "max_tokens": 450000
+        },
+        "acceptance": [
+          {
+            "id": "usage",
+            "label": "All execution exits finalize real partial usage monotonically without changing terminal outcome or double counting",
+            "weight": 40
+          },
+          {
+            "id": "context",
+            "label": "Concise prompts retain authoritative requirements and explicit review target/check IDs; no unsafe worker context reuse",
+            "weight": 30
+          },
+          {
+            "id": "checks",
+            "label": "Meaningful helper tests and later actual operator test receipts verify usage and scheduling behavior; no fabricated execution",
+            "weight": 30
+          }
+        ],
+        "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+      },
+      "sessions": [
+        "ses_eca4b47aeffe7GpaMTKTejdryA",
+        "ses_eca3cbadfffeaVKDU3XboIZpkx",
+        "ses_ec99f286effehRjjqhaxAZWFIX"
+      ]
+    },
+    "C0-budget-operation": {
+      "id": "task_721b4f71-18c1-40f4-bba2-3b1b7ebb4148",
+      "spec": {
+        "title": "P0.1 add authenticated operator budget CAS service",
+        "role": "implementer",
+        "description": "Implement ONLY Orchestration.updateGoalBudget in service.ts, preserving existing uncommitted work. Current control.ts worker A calls signature {goalID,budgetTokens,expectedBudget:number|null,reason,actorSessionID}. Add Interface entry, Effect.fn implementation and returned method. Read targeted service.ts offsets for Interface, recordEvent and createGoal/setGoalStatus; use grep first, do not read all 2900 lines. Validate budgetTokens positive finite integer, reason trimmed nonempty, actor session exists/not archived and idle/active manager binding in same project, expectedBudget exactly equals current cap including null. Use immediate DB transaction, recheck actor/goal, atomic cap update and recordEvent goal.budget.updated with old/new cap, reason and actor; never automatically activate paused goal. Do not expose a model tool, do not modify control.ts or HTTP handler; operator route is separate. Add meaningful real service fixture tests in goal-budget.test.ts following existing test patterns if possible, including CAS mismatch, cross-project actor and invalid values; do not replicate validation logic in tests. Effect v4 only, no comments, no docs, no shell/test claims. Keep patch small, finish within three-minute runtime deadline.",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/core/src/session/sql.ts",
+            "packages/opencode/test/orchestration"
+          ],
+          "write_paths": [
+            "packages/opencode/src/orchestration/service.ts",
+            "packages/opencode/test/orchestration/goal-budget.test.ts"
+          ],
+          "tools": [],
+          "max_tokens": 400000
+        },
+        "acceptance": [
+          {
+            "id": "cas",
+            "label": "Operator budget update validates same-project active manager, reason and exact old-cap CAS including null",
+            "weight": 40
+          },
+          {
+            "id": "event",
+            "label": "Atomic cap update emits durable event and leaves paused goal paused; model cannot invoke operator path",
+            "weight": 30
+          },
+          {
+            "id": "tests",
+            "label": "Actual service tests/operator regression evidence demonstrate refusals and success without fake test execution",
+            "weight": 30
+          }
+        ],
+        "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+      },
+      "sessions": [
+        "ses_eca4b47b3ffeC2NPhsICz7X0nc",
+        "ses_eca3cbaedffeqNxOmA48l0rGSW",
+        "ses_ec9cb659effee9DcNAoLNtT8TT",
+        "ses_ec99a581effeby9HeKNQp1wly4"
+      ]
+    },
+    "D-operator-route": {
+      "id": "task_3e0c6307-5347-499a-ba6f-3c3d2c7cb578",
+      "spec": {
+        "title": "P0.1 wire trusted operator budget route",
+        "role": "implementer",
+        "description": "Edit ONLY packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts. Read its existing command handler and control.ts invokeOperator. In authenticated HTTP command handler, dispatch operation goal_budget (and upcoming task_budget) to control.invokeOperator; all other operations continue control.invoke. Do not expose operator commands to model ControlTool enum/actions. No endpoint/payload schema change; keep existing errors/authentication. No comments or docs. This should be a very small handler edit; do not tour repo. You cannot run tests; report not run. Current Effect v4 code must match existing handler patterns.",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/server/routes/instance/httpapi",
+            "packages/opencode/src/orchestration/control.ts"
+          ],
+          "write_paths": [
+            "packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts"
+          ],
+          "tools": [],
+          "max_tokens": 250000
+        },
+        "acceptance": [
+          {
+            "id": "route",
+            "label": "Authenticated operator goal/task budget commands route through invokeOperator while model-facing operations remain invoke",
+            "weight": 60
+          },
+          {
+            "id": "boundary",
+            "label": "Existing auth/schema/errors preserved and budget operations absent from model tool catalog; actual operator HTTP tests support routing",
+            "weight": 40
+          }
+        ],
+        "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+      },
+      "sessions": [
+        "ses_eca355718ffevwwO1VownJRE4h",
+        "ses_ec9968f5bffeRji4d9M6I2SGub"
+      ]
+    },
+    "C1-live-budget": {
+      "id": "task_cb6bd422-8c81-4523-afc3-43f1851cbc7b",
+      "spec": {
+        "title": "P0.1 live budget admission, output caps and controlled task budget updates",
+        "role": "implementer",
+        "description": "Implement focused F3 integration. Preserve all prior patches. Work in small edits and targeted reads <=160 lines; no full service tour. Current Effect v4 Schema.Number.check/isInt/isGreaterThanOrEqualTo, Cause.squash, decodeUnknownEffect. No comments/docs/shell grants. (1) Add operator-only task_budget to control.invokeOperator (not model tools), validate {taskID,maxTokens,expectedMaxTokens:number|null,reason}; add Orchestration.updateTaskBudget with same-project authenticated manager, exact old-cap CAS, immediate transaction and durable event, preserve task scope/status. Goal budget method exists; keep its security. (2) Budget/claim/authorize must count real live consumption from Session counters and run.result.usage_baseline, finalized stored usage for closed runs, and handle legacy failed usage using actual MessageTable assistant receipts scoped to run prompt_start_id/time range, never all lifetime session usage or double-count cache. Share usage helpers. Reconcile/update monotonically; no silent fake-zero success. Include consistent existing manager accounting in goal total, preserving activation baseline on resume. (3) Add policy.prepareTurn({sessionID,inputTokensEstimate,requestedOutputTokens,requestID}) returning maxOutputTokens. For managed assigned runs use atomic per-run result reservation metadata, reject if estimated input+minimum output cannot fit goal/task available budget after live usage and other active reservations; replace previous reservation on next turn rather than accumulating forever. Keep existing allow/deny role/file checks. (4) In session/prompt.ts call prepareTurn after system/model messages are built, with conservative estimated input and assistant message ID, then pass returned maxOutputTokens to processor. Add optional maxOutputTokens to session/llm.ts StreamInput and clamp AFTER prepared params/plugins for BOTH llmClient and legacy streamText branches. Unmanaged sessions unchanged. Defaults bounded output cap 4096 for managed runs; never claim token estimate is exact billing/hard provider guarantee. (5) Add real tests of budget helpers and real policy/service layers: partial live consumption blocks next call; queued/exhausted doesn't block other eligible goals; wrong/archived/cross-project actor denied; CAS null and mismatch; per-task max preserved; output cap positive <=remaining, typed tools cannot update budgets. Do not duplicate implementation in tests. We run actual tests/build externally. Finish practical patch, report blockers instead of pretending tests ran.",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/opencode/src/session/prompt.ts",
+            "packages/opencode/src/session/llm.ts",
+            "packages/opencode/src/session/processor.ts",
+            "packages/opencode/test/orchestration",
+            "packages/core/src/session/sql.ts",
+            "packages/core/src/orchestration/sql.ts"
+          ],
+          "write_paths": [
+            "packages/opencode/src/orchestration/service.ts",
+            "packages/opencode/src/orchestration/policy.ts",
+            "packages/opencode/src/orchestration/control.ts",
+            "packages/opencode/src/orchestration/budget.ts",
+            "packages/opencode/src/session/prompt.ts",
+            "packages/opencode/src/session/llm.ts",
+            "packages/opencode/test/orchestration/live-budget.test.ts"
+          ],
+          "tools": [],
+          "max_tokens": 900000
+        },
+        "acceptance": [
+          {
+            "id": "live",
+            "label": "Live/failed/cancelled usage reconciles honestly and budget guards prevent additional calls after exhaustion without cross-run lifetime overcharge",
+            "weight": 35
+          },
+          {
+            "id": "caps",
+            "label": "Per-turn reservations and real provider output caps apply only to managed runs and preserve permission/cancellation guards",
+            "weight": 35
+          },
+          {
+            "id": "operator",
+            "label": "Operator-only task/goal budget CAS updates are eventful and cannot be invoked by model tools",
+            "weight": 15
+          },
+          {
+            "id": "tests",
+            "label": "Actual policy/service and HTTP/provider tests support behavior with negative cases; no fake execution claims",
+            "weight": 15
+          }
+        ],
+        "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+      },
+      "sessions": [
+        "ses_eca2c269affeK9e4lUiWHurOwY",
+        "ses_ec9cb658bffeXMpz3yc2lZ6WWT",
+        "ses_ec99f2737ffe3SY5upZYC09iG1"
+      ]
+    },
+    "C2-budget-helper": {
+      "id": "task_3cc4ca8c-45ad-456c-a78d-aecb92b77c84",
+      "spec": {
+        "title": "P0.1 implement isolated budget helper without rewriting runtime modules",
+        "role": "implementer",
+        "description": "Previous C1 was rejected because full-file rewrites removed existing APIs. For this task write ONLY NEW orchestration/budget.ts and NEW test/orchestration/budget-helper.test.ts. Never edit/write any existing module. Export createBudget(db: Database.Interface['db']) returning reconcile(projectID), spend({taskID?,goalID?}) and prepareTurn({sessionID,inputTokensEstimate,requestedOutputTokens?,requestID}) effects. Helper errors use Error with meaningful messages; DB errors orDie. reconcile derives each run's usage from ACTUAL MessageTable assistant tokens scoped by session and prompt_start_id (or time_started..time_finished), sums via existing sumTokens, max with stored; do not count pre-run READY/lifetime tokens or add stored+delta. Preserve status/result; include cancelled/failed historical runs; update monotonically. spend includes run totals, existing manager assistant receipts after goal metadata.activated_at for its manager_session_id, and reservations of other unfinished runs. prepareTurn: managed bound assigned task/run only; unmanaged returns undefined. In immediate transaction validate binding/session/task/project/run/current revision/goal active, reconcile counters, compute min task/goal remaining minus other live reservations; output min(requested or4096,4096,remaining-inputEstimate); refuse nonpositive remaining. Write per-run result.reservation {requestID,inputEstimate,reservedOutput,time}; replace prior own reservation, don't accumulate; finalized or terminal reservations ignored. Return number|undefined, estimate not exact billing. No comments/docs, no any casts, Effect v4 API. Add tests that instantiate actual helper with isolated Database.layerFromPath and seed native project/session/task/run/message rows; test failed usage/idempotency/READY exclusion/output clamp/another reservation/CAS-style serialized admission/paused goal/missing binding unmanaged. Narrow reads only schemas/usage.ts and existing policy runtime test setup; do not copy/refactor existing service/prompt/llm. Keep module <=250 lines and finish practical helper. Integration into existing modules is operator-owned because prior agent could not preserve them. You cannot run tests; report honestly.",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/core/src/session/sql.ts",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/orchestration/usage.ts",
+            "packages/opencode/test/orchestration/policy-runtime.test.ts",
+            "packages/opencode/test/orchestration/goal-budget.test.ts"
+          ],
+          "write_paths": [
+            "packages/opencode/src/orchestration/budget.ts",
+            "packages/opencode/test/orchestration/budget-helper.test.ts"
+          ],
+          "tools": [],
+          "max_tokens": 600000
+        },
+        "acceptance": [
+          {
+            "id": "ledger",
+            "label": "Actual assistant receipts scope per run, failure/cancellation counted, READY/lifetime usage excluded and idempotent monotone reconciliation",
+            "weight": 40
+          },
+          {
+            "id": "reserve",
+            "label": "Atomic managed-turn reservations honor goal/task budgets, output clamp, other reservations and paused/stale state; unmanaged unchanged",
+            "weight": 40
+          },
+          {
+            "id": "tests",
+            "label": "Real isolated DB helper tests verify behavior and no existing runtime module is overwritten",
+            "weight": 20
+          }
+        ],
+        "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+      },
+      "sessions": [
+        "ses_eca209c74ffedMLdlPffQEmOh9",
+        "ses_eca1b3ffaffe6CAETMoAw7Zmig",
+        "ses_ec99adf01ffeqvQPWFF2f69aDN"
+      ]
+    }
+  },
+  "records": [
+    {
+      "kind": "execution",
+      "time": 1791905238,
+      "data": {
+        "key": "C2-budget-helper",
+        "runID": "run_5b0d7e8e-04a0-40e6-b070-d2224111d586",
+        "status": "verifying",
+        "text": "Implemented isolated budget helper `packages/opencode/src/orchestration/budget.ts` and test suite `packages/opencode/test/orchestration/budget-helper.test.ts` entirely within the permitted write paths without modifying any existing runtime modules."
+      }
+    },
+    {
+      "kind": "revision",
+      "time": 1791905546,
+      "data": {
+        "key": "C2-budget-helper",
+        "feedback": "Fix actual helper, existing modules remain forbidden: db.all/db.get do not exist; use db.run(sql) which returns row array, first row for get. Import MessageTable from core/session/sql, NOT SessionMessageTable from core/database/schema. V1 assistant filter json_extract(m.data, role)=assistant, not m.type; use prompt_start_id AND upper time_finished bound so later reuse not charged, or start/end time fallback. spend(goalID) must sum ALL goal tasks, not AND current task; task spend separately. Reservations restricted to same selected task/goal, status pending/running/verifying, ignore usage_finalized; never use completed status, actual terminal is done. Task max_tokens must be read from scope and applied along with goal cap. Wrap prepare in db.transaction immediate; validate session/binding/task/project/active_run/revision/attempt/goal active. Clear prior OWN reservation inside transaction before computing separate task/goal spend, then replace it; failing admission rolls back. Positive finite request estimates/output validation. Reconcile by real native MessageTable receipts max with stored, no lifetime totals. Unit fixtures must use same real V1 MessageTable. No whole source rewrites outside helper/test. Fix only these points then finish."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791905548,
+      "data": {
+        "session": "ses_eca1b3ffaffe6CAETMoAw7Zmig",
+        "role": "implementer",
+        "model": {
+          "id": "gemini-3.5-flash-lite",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791905579,
+      "data": {
+        "key": "C2-budget-helper",
+        "runID": "run_259fa4e0-2e12-471f-99e3-46a26042b56c",
+        "status": "verifying",
+        "text": "packages/opencode/src/orchestration/budget.ts\npackages/opencode/test/orchestration/budget-helper.test.ts"
+      }
+    },
+    {
+      "kind": "p0_resumed",
+      "time": 1791908675,
+      "data": {
+        "goal": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+        "task": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+        "operator_goal_cap": 2400000,
+        "operator_task_cap": 1800000
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791908679,
+      "data": {
+        "session": "ses_ec9eb8093ffe1UUgYj2AthPFqU",
+        "role": "implementer",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "p0_final_execution",
+      "time": 1791908820,
+      "data": {
+        "runID": "run_c1559586-6106-4af6-9c70-88ad591c2782",
+        "status": "failed",
+        "text": "Provider returned an empty delivery; no verified completion was recorded"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791908823,
+      "data": {
+        "session": "ses_ec9e94938ffeBoaakRTaVzsNYF",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "p0_final_review",
+      "time": 1791908985,
+      "data": {
+        "runID": "run_6848c8da-0d00-42f1-b5f6-e07236fb22e2",
+        "status": "failed",
+        "text": "CvisPolicyDenied: Task token budget exhausted\n    at <anonymous> (/$bunfs/root/chunk-f2kkq773.js:30:2730)\n    at SessionPrompt.run (/$bunfs/root/chunk-f2kkq773.js:50:15341)\n    at SessionPrompt.run (definition) (/$bunfs/root/chunk-f2kkq773.js:50:10077)\n    at SessionRunState.ensureRunning (/$bunfs/root/chunk-f2kkq773.js:50:15310)\n    at SessionRunState.ensureRunning (definition) (/$bunfs/root/chunk-ms3fxa9f.js:32:24514)\n    at SessionPrompt.loop (/$bunfs/root/chunk-f2kkq773.js:50:9827)\n    at SessionPrompt.loop (definition) (/$bunfs/root/chunk-f2kkq773.js:50:15245)\n    at SessionPrompt.prompt (/$bunfs/root/chunk-xzb4xjq4.js:11:387)\n    at SessionPrompt.prompt (definition) (/$bunfs/root/chunk-f2kkq773.js:50:9439)\n    at CvisHarness.execute (/$bunfs/root/chunk-xzb4xjq4.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-xzb4xjq4.js:5:25471)"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791909470,
+      "data": {
+        "session": "ses_ec9df6cc4ffel7uMdJz7W449Zn",
+        "role": "implementer",
+        "model": {
+          "id": "gemini-3.5-flash-lite",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "p0_compact_retry",
+      "time": 1791909490,
+      "data": {
+        "runID": "run_e92cd6a8-3908-49cb-be77-226cfe7bb3cc",
+        "status": "verifying",
+        "text": "- Updated `CVIS-UPGRADE-PREFLIGHT.md` using `EDIT` to add section 6 detailing completed P0.1 fixes, operator test execution results, source paths cited from `packages/opencode/test/orchestration/p01-evidence.json`, and honesty statement confirming future phases are unmitigated/unimplemented.\n- Verified all constraints: no source/config/service changes made outside write scope; exact four acceptance checks preserved."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791909492,
+      "data": {
+        "session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "p0_final_review",
+      "time": 1791909586,
+      "data": {
+        "runID": "run_e80e5b26-9fa8-475a-9b99-0fa950742232",
+        "status": "done",
+        "text": "**PASS** — all four checks verified against real artifact files.\n\n| Check | Verdict | Key evidence |\n|---|---|---|\n| `baseline` | PASS | `project.ts:146-193` `migrateProjectId` + CASCADE confirmed in `sql.ts:29,187,241`; FTS-gated recall confirmed in `recall.ts:99-112`; ACL absence confirmed in memory schema; plan-supplied baseline explicitly flagged |\n| `architecture` | PASS | Three core projects (CVIS/CVIScode/CVISmem), five memory scopes, unified cross-channel identity, isolated Assistant Apps, managed registry separate from Git — all present and accurate in PREFLIGHT §2 |\n| `rollout` | PASS | Concrete P1 patch sequence (§4.1), P0-P10 dependency/gap table (§3), idempotency+preservation+rollback strategy (§4.2), scheduler/executor gap identified, five distinct negative test cases (§4.3) |\n| `honesty` | PASS | Artifact explicitly preflight-only; operator attribution for test execution (not agent fabrication); p01-evidence.json corroborates operator-run; P1-P10 marked proposed/not implemented; plan-supplied legacy assertions flagged |"
+      }
+    },
+    {
+      "kind": "operator_budget_update",
+      "time": 1791910398,
+      "data": {
+        "old": 8000000,
+        "new": 12000000,
+        "reason": "Explicit operator allocation for final component QA under approved P0.1; reconciled historical failures included, no model self-increase",
+        "response": {
+          "accepted": true,
+          "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+          "budgetTokens": 12000000
+        }
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791910709,
+      "data": {
+        "key": "A-contracts",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/tool/tool.ts",
+            "packages/opencode/test/orchestration",
+            "packages/opencode/src/orchestration/control-tool.ts",
+            "packages/opencode/src/orchestration/control.ts",
+            "packages/opencode/test/orchestration/control-contract.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 3000000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791910710,
+      "data": {
+        "key": "C0-budget-operation",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/core/src/session/sql.ts",
+            "packages/opencode/test/orchestration",
+            "packages/opencode/src/orchestration/service.ts",
+            "packages/opencode/test/orchestration/goal-budget.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 400000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791910711,
+      "data": {
+        "key": "C1-live-budget",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/opencode/src/session/prompt.ts",
+            "packages/opencode/src/session/llm.ts",
+            "packages/opencode/src/session/processor.ts",
+            "packages/opencode/test/orchestration",
+            "packages/core/src/session/sql.ts",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/orchestration/service.ts",
+            "packages/opencode/src/orchestration/policy.ts",
+            "packages/opencode/src/orchestration/control.ts",
+            "packages/opencode/src/orchestration/budget.ts",
+            "packages/opencode/test/orchestration/live-budget.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 900000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910781,
+      "data": {
+        "session": "ses_ec9cb658bffeXMpz3yc2lZ6WWT",
+        "role": "implementer",
+        "model": {
+          "id": "gemini-3.5-flash-lite",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910781,
+      "data": {
+        "session": "ses_ec9cb659effee9DcNAoLNtT8TT",
+        "role": "implementer",
+        "model": {
+          "id": "gemini-3.5-flash-lite",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910781,
+      "data": {
+        "session": "ses_ec9cb65b8ffehh8C63biJo20jN",
+        "role": "implementer",
+        "model": {
+          "id": "gemini-3.5-flash-lite",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791910788,
+      "data": {
+        "key": "C1-live-budget",
+        "runID": "run_f6bfba21-8c5f-464c-a0ba-2b6a88a589ec",
+        "status": "verifying",
+        "text": "Task checkpoint and evidence verified successfully for P0.1 live budget admission, output caps and controlled task budget updates. All requested components are implemented with operator integration and QA verified as recorded in `packages/opencode/test/orchestration/p01-evidence.json`. No source edits performed as per instructions."
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791910789,
+      "data": {
+        "key": "C0-budget-operation",
+        "runID": "run_c8d027f3-eed8-48e4-a36a-0e05606af630",
+        "status": "verifying",
+        "text": "P0.1 add authenticated operator budget CAS service final delivery checkpoint.\n\n- **Status**: Read-only final delivery checkpoint for `C0-budget-operation`.\n- **Source Implementation**: Produced and verified by operators and workers with explicitly recorded integration/QA.\n- **Touched Files**: None modified (DO NOT EDIT ANY FILE per task directive).\n- **Evidence Reference**: Checked `packages/opencode/test/orchestration/p01-evidence.json` showing 83 unit tests, 15 HTTP/provider bootstrap tests, 27 HTTP fault tests, 20 security tests, 33 memory integrity tests, and 27 real Claude pilot test passes.\n- **Attribution**: All manual fixes, database regression evidence, and test execution are attributed directly to the operator integration session. Independent verifier inspects final artifact hashes."
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791910790,
+      "data": {
+        "key": "A-contracts",
+        "runID": "run_5a693c0e-368c-4561-8d2b-61100753c19a",
+        "status": "verifying",
+        "text": "Delivery Checkpoint Report: P0.1 F1: Preserve tool scope budgets and authoritative review identity.\n\n- **Status**: Read-only final delivery checkpoint for A-contracts. Existing source implementation produced by workers with explicitly recorded operator integration/QA.\n- **Touched files**: None (read-only enforcement per task specification; files examined match `packages/opencode/test/orchestration/p01-evidence.json` and associated source files).\n- **Attribution**: Operator executed tests/builds and validated hashes; pre-existing source and tests verified via `packages/opencode/test/orchestration/p01-evidence.json`."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910899,
+      "data": {
+        "session": "ses_ec9c99bb7ffemtK4LjPeHkMQJ3",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910899,
+      "data": {
+        "session": "ses_ec9c99bb1ffeuAzXqSXmgU1ybl",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910899,
+      "data": {
+        "session": "ses_ec9c99b80ffeCf28KYzmwp0bd3",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910900,
+      "data": {
+        "session": "ses_ec9c99b7cffeWRoRTMB59kSjLn",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910900,
+      "data": {
+        "session": "ses_ec9c99b8fffeW5nPOkkyXi5luI",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791910901,
+      "data": {
+        "session": "ses_ec9c99bbdffejnJxvByQ6keThf",
+        "role": "verifier",
+        "model": {
+          "id": "claude-sonnet-4-6",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791911439,
+      "data": {
+        "key": "D-operator-route",
+        "runID": "run_ac35c5bb-0b34-4579-a924-4b871e535ed1",
+        "status": "failed",
+        "text": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-p6238t6v.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-p6238t6v.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-p6238t6v.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-p6238t6v.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-79dbjmce.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-79dbjmce.js:5:25471)\n    at Server.listen (/$bunfs/root/chunk-79dbjmce.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-79dbjmce.js:21:13373)"
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791911439,
+      "data": {
+        "key": "C2-budget-helper",
+        "runID": "run_4bb05696-ede2-48bf-b1db-9038ccac39e2",
+        "status": "failed",
+        "text": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-p6238t6v.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-p6238t6v.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-p6238t6v.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-p6238t6v.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-79dbjmce.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-79dbjmce.js:5:25471)\n    at Server.listen (/$bunfs/root/chunk-79dbjmce.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-79dbjmce.js:21:13373)"
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791911440,
+      "data": {
+        "key": "C0-budget-operation",
+        "runID": "run_c178ce80-d638-47ca-ab43-b5f549bcc721",
+        "status": "failed",
+        "text": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-p6238t6v.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-p6238t6v.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-p6238t6v.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-p6238t6v.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-79dbjmce.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-79dbjmce.js:5:25471)\n    at Server.listen (/$bunfs/root/chunk-79dbjmce.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-79dbjmce.js:21:13373)"
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791911440,
+      "data": {
+        "key": "A-contracts",
+        "runID": "run_4d61b500-b47e-4e1a-854a-accbfc18a9b6",
+        "status": "failed",
+        "text": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-p6238t6v.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-p6238t6v.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-p6238t6v.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-p6238t6v.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-79dbjmce.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-79dbjmce.js:5:25471)\n    at Server.listen (/$bunfs/root/chunk-79dbjmce.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-79dbjmce.js:21:13373)"
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791911440,
+      "data": {
+        "key": "B-usage-context",
+        "runID": "run_5e7caca6-ba71-48d5-b203-f84108d0bf6b",
+        "status": "failed",
+        "text": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-p6238t6v.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-p6238t6v.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-p6238t6v.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-p6238t6v.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-79dbjmce.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-79dbjmce.js:5:25471)\n    at Server.listen (/$bunfs/root/chunk-79dbjmce.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-79dbjmce.js:21:13373)"
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791911441,
+      "data": {
+        "key": "C1-live-budget",
+        "runID": "run_402abdd2-80fe-45c4-a1c7-bb35baddba7b",
+        "status": "failed",
+        "text": "TimeoutError: TimeoutError\n    at orElse (/$bunfs/root/chunk-p6238t6v.js:25:16138)\n    at runLoop (/$bunfs/root/chunk-p6238t6v.js:25:2049)\n    at evaluate (/$bunfs/root/chunk-p6238t6v.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-p6238t6v.js:25:5704)\n    at CvisHarness.execute (/$bunfs/root/chunk-79dbjmce.js:12:4400)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-79dbjmce.js:5:25471)\n    at Server.listen (/$bunfs/root/chunk-79dbjmce.js:21:13267)\n    at Server.listen (definition) (/$bunfs/root/chunk-79dbjmce.js:21:13373)"
+      }
+    },
+    {
+      "kind": "operator_abort_stalled_preparation",
+      "time": 1791912542,
+      "data": {
+        "sessions": [
+          "ses_ec9b69c24ffevqrYNTSJgpxwts",
+          "ses_ec9b69c1affe6vJ5dAc1cgaTui"
+        ],
+        "reason": "Provider READY requests stalled beyond client timeout; stop own sessions only"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791912547,
+      "data": {
+        "session": "ses_ec9b07fd7ffe6okGSJFpUUdxQL",
+        "role": "verifier",
+        "model": {
+          "id": "gemini-3.5-flash-lite",
+          "providerID": "cvis-cliproxy",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791912563,
+      "data": {
+        "key": "A-contracts",
+        "runID": "run_92a3c341-eec0-4251-a088-30f97c72477b",
+        "status": "failed",
+        "text": "Provider returned an empty delivery; no verified completion was recorded"
+      }
+    },
+    {
+      "kind": "component_qa_blocker",
+      "time": 1791912989,
+      "data": {
+        "goal": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+        "status": "paused",
+        "reason": "Deployed implementation has operator tests; component formal QA not complete. Claude READY stalled and parallel reviews timed out, Gemini delivery empty. Preserve all checks/history; no fabricated Done. P0 is independently completed."
+      }
+    },
+    {
+      "kind": "qa_resumed",
+      "time": 1791913411,
+      "data": {
+        "reason": "User explicitly requested continuation; Cline chat and structured tool probes passed; no budget reset"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791913412,
+      "data": {
+        "key": "A-contracts",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/tool/tool.ts",
+            "packages/opencode/test/orchestration",
+            "packages/opencode/src/orchestration/control-tool.ts",
+            "packages/opencode/src/orchestration/control.ts",
+            "packages/opencode/test/orchestration/control-contract.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 3000000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913468,
+      "data": {
+        "session": "ses_ec9a2738dffe3qwfi3f6ckRMKk",
+        "role": "implementer",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791913494,
+      "data": {
+        "key": "A-contracts",
+        "runID": "run_1997af97-260f-4525-8880-159ef07537df",
+        "status": "verifying",
+        "text": "**Delivery summary — P0.1 F1 (read-only checkpoint, revision 7)**\n\nNo files were edited (`write_paths` empty; zero source changes by this session).\n\n**Actual artifacts (hashes recorded in `packages/opencode/test/orchestration/p01-evidence.json`):**\n- `packages/opencode/src/orchestration/control-tool.ts` — typed `TaskScopeSchema` with `max_tokens` integer ≥1 check (scope-budget decoding: valid values survive, invalid fail), operation catalog excluding any budget-update command, actor identity bound from `ctx.sessionID`\n- `packages/opencode/src/orchestration/control.ts`, `service.ts`, `policy.ts`, `harness.ts`, `usage.ts`, `budget.ts`\n- `packages/core/src/orchestration/sql.ts` (via scoped orchestration sources), `packages/opencode/src/tool/tool.ts`\n- Tests: `packages/opencode/test/orchestration/` (incl. `control-contract.test.ts`)\n\n**Verified this session (direct reads only):** evidence JSON contents, plus 120 lines of `control-tool.ts` confirming typed scope-budget schema, verifier-targeted `cvis_verify` action, and model-facing operation list without operator budget commands.\n\n**Attribution:** All test execution, typechecks, and manual fixes were performed by the **operator**, not this session — per evidence: 83 unit/runtime, 15 bootstrap HTTP/provider, 27 HTTP faults, 20 security, 33 memory integrity, 27 real-Claude pilot passes; typecheck of `core` and `opencode`; interventions include fixing bootstrap Effect API errors, rejecting whole-module rewrites, and integrating the live budget helper with real DB regressions.\n\n**Known limits:** input reservations are estimates; source changes uncommitted; P1–P10 not implemented."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913498,
+      "data": {
+        "session": "ses_ec9a1f8c2ffe1y71UNbclN7Jah",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791913646,
+      "data": {
+        "key": "A-contracts",
+        "runID": "run_84008d4e-0c2d-4c83-a4d1-585fc8a593dd",
+        "status": "done",
+        "text": "Backend receipt summary: all current acceptance checks passed independent artifact verification"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791913657,
+      "data": {
+        "key": "B-usage-context",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/opencode/test/orchestration",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/orchestration/harness.ts",
+            "packages/opencode/src/orchestration/usage.ts",
+            "packages/opencode/test/orchestration/usage.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 450000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791913658,
+      "data": {
+        "key": "C0-budget-operation",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/core/src/session/sql.ts",
+            "packages/opencode/test/orchestration",
+            "packages/opencode/src/orchestration/service.ts",
+            "packages/opencode/test/orchestration/goal-budget.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 3000000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791913659,
+      "data": {
+        "key": "C1-live-budget",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/orchestration",
+            "packages/opencode/src/session/prompt.ts",
+            "packages/opencode/src/session/llm.ts",
+            "packages/opencode/src/session/processor.ts",
+            "packages/opencode/test/orchestration",
+            "packages/core/src/session/sql.ts",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/orchestration/service.ts",
+            "packages/opencode/src/orchestration/policy.ts",
+            "packages/opencode/src/orchestration/control.ts",
+            "packages/opencode/src/orchestration/budget.ts",
+            "packages/opencode/test/orchestration/live-budget.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 3000000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791913660,
+      "data": {
+        "key": "C2-budget-helper",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/core/src/session/sql.ts",
+            "packages/core/src/orchestration/sql.ts",
+            "packages/opencode/src/orchestration/usage.ts",
+            "packages/opencode/test/orchestration/policy-runtime.test.ts",
+            "packages/opencode/test/orchestration/goal-budget.test.ts",
+            "packages/opencode/src/orchestration/budget.ts",
+            "packages/opencode/test/orchestration/budget-helper.test.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 600000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "operator_readonly_checkpoint",
+      "time": 1791913661,
+      "data": {
+        "key": "D-operator-route",
+        "scope": {
+          "read_paths": [
+            "AGENTS.md",
+            "packages/opencode/AGENTS.md",
+            "packages/opencode/src/server/routes/instance/httpapi",
+            "packages/opencode/src/orchestration/control.ts",
+            "packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts",
+            "packages/opencode/test/orchestration/p01-evidence.json"
+          ],
+          "write_paths": [],
+          "tools": [],
+          "max_tokens": 250000
+        },
+        "reason": "Missing admin scope revision capability; normal service API used, no direct DB verdict edits"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913691,
+      "data": {
+        "session": "ses_ec99f286effehRjjqhaxAZWFIX",
+        "role": "implementer",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913691,
+      "data": {
+        "session": "ses_ec99f2737ffe3SY5upZYC09iG1",
+        "role": "implementer",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791913729,
+      "data": {
+        "key": "B-usage-context",
+        "runID": "run_2e2722e3-84b8-46ab-9a76-e46759c119e8",
+        "status": "verifying",
+        "text": "Delivery summary (read-only checkpoint; no files edited by me):\n\n**Files/features (from p01-evidence.json hashes):**\n- `packages/opencode/src/orchestration/usage.ts` — `sumTokens`/`runUsage` compute monotonic usage: live partial tokens minus recorded `usage_baseline`, floored at `tokens_used` so exits finalize real partial usage without double counting or altering terminal outcome.\n- `packages/opencode/src/orchestration/harness.ts`, `budget.ts`, `control.ts`, `control-tool.ts`, `service.ts`, `policy.ts` — exit/budget/control wiring; `packages/opencode/src/session/prompt.ts`, `session/llm.ts` integration; DB regressions in `packages/core/src/orchestration/sql.ts`.\n- Tests: `packages/opencode/test/orchestration/usage.test.ts` plus suites in `packages/opencode/test/orchestration`.\n\n**Attribution (per evidence file):** all test/build execution and manual fixes were performed by the operator (managed shell unavailable to agents): bootstrap Effect API/template fixes, rejection of whole-module rewrites, integration of the live budget helper, replacement of invalid helper tests with real DB regressions, and explicit failure for empty provider deliveries. Suites recorded: unit/runtime 83, bootstrap HTTP 15, HTTP faults 27, security 20, memory integrity 33, real Claude pilot 27; typechecks core+opencode — all operator-run receipts, not mine.\n\n**Limits:** input reservations are estimates; source changes uncommitted; P1–P10 not implemented; independent P0 review pending.\n\n**Acceptance mapping:** `usage` → `usage.ts` monotonic baseline logic; `context` → concise prompts with review target/check IDs retained; `checks` → operator test receipts in evidence file. Changed files by me: none (write scope empty, as instructed)."
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791913733,
+      "data": {
+        "key": "C1-live-budget",
+        "runID": "run_2e3b3b32-b8d4-4bba-8768-f46a0f690dcc",
+        "status": "verifying",
+        "text": "Delivery summary (read-only checkpoint; no files edited by me):\n\n- **Files** (SHA256 recorded in `packages/opencode/test/orchestration/p01-evidence.json`): `src/orchestration/{control,control-tool,service,policy,harness,usage,budget}.ts`, `src/session/{prompt,llm}.ts`.\n- **live**: `budget.ts` `reconcile()` sums assistant tokens per-run scoped window (`prompt_start_id`→`usage_end_time`/finish) and applies monotonic `max()` updates — honest reconciliation, no cross-run lifetime overcharge; `spend()` aggregates task/goal spend counting reservations only for non-finalized runs and excluding the current run (`excludeRunID`), preventing overcharge of finalized usage.\n- **caps**: per-turn reservation (`inputEstimate`/`reservedOutput`) and provider output caps recorded in run `result.reservation` (see openRun in CVIS context); integrated by operator preserving existing APIs.\n- **operator**: task/goal budget CAS updates via `task.budget.updated` events (revision 3 budget update visible in task events); `control-tool.ts` exists as separate tool surface so model tools cannot invoke operator budget updates (per evidence).\n- **tests**: operator-executed suites per evidence — 83 unit/runtime, 15 bootstrap HTTP/provider, 27 HTTP faults, 20 security, 33 memory integrity, 27 real Claude pilot; typechecks `core`+`opencode`. All test execution and fixes (Effect API/template fixes, live-budget integration, empty-delivery explicit failure) attributed to **operator**, not me; I did not run tests or write code."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913747,
+      "data": {
+        "session": "ses_ec99e605fffeht6BUc7qPSsEhH",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913748,
+      "data": {
+        "session": "ses_ec99e51b0ffeEKHbMujXk3YWzm",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791913959,
+      "data": {
+        "key": "C1-live-budget",
+        "runID": "run_80ac7dc8-fc28-42d2-b9b6-5896749c7965",
+        "status": "failed",
+        "text": "CvisPolicyDenied: Budget exhausted for upcoming provider turn\n    at <anonymous> (/$bunfs/root/chunk-vc5053v6.js:30:6076)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2049)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2283)\n    at evaluate (/$bunfs/root/chunk-1p8s46m0.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-1p8s46m0.js:25:5704)\n    at processTicksAndRejections (native:7:39)\n    at SessionPrompt.run (/$bunfs/root/chunk-vc5053v6.js:50:15393)\n    at SessionPrompt.run (definition) (/$bunfs/root/chunk-vc5053v6.js:50:10077)\n    at SessionRunState.ensureRunning (/$bunfs/root/chunk-vc5053v6.js:50:15362)\n    at SessionRunState.ensureRunning (definition) (/$bunfs/root/chunk-rsryxywf.js:32:24512)\n    at SessionPrompt.loop (/$bunfs/root/chunk-vc5053v6.js:50:9827)\n    at SessionPrompt.loop (definition) (/$bunfs/root/chunk-vc5053v6.js:50:15297)\n    at SessionPrompt.prompt (/$bunfs/root/chunk-nteepwy6.js:11:387)\n    at SessionPrompt.prompt (definition) (/$bunfs/root/chunk-vc5053v6.js:50:9439)\n    at CvisHarness.execute (/$bunfs/root/chunk-nteepwy6.js:12:4551)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-nteepwy6.js:5:25471)"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913976,
+      "data": {
+        "session": "ses_ec99adf01ffeqvQPWFF2f69aDN",
+        "role": "implementer",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791913994,
+      "data": {
+        "key": "B-usage-context",
+        "runID": "run_6c1e212e-3089-44c7-a78c-8b8638f011fa",
+        "status": "done",
+        "text": "All three acceptance checks inspected against actual artifacts. Recording verdicts:"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791913998,
+      "data": {
+        "session": "ses_ec99a581effeby9HeKNQp1wly4",
+        "role": "implementer",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791914030,
+      "data": {
+        "key": "C2-budget-helper",
+        "runID": "run_a408f3d7-5d92-4f12-aeee-a4ee7f774992",
+        "status": "verifying",
+        "text": "**Delivery summary — task_3cc4ca8c (rev 3, read-only checkpoint; I edited nothing)**\n\nEvidence source: `packages/opencode/test/orchestration/p01-evidence.json` (operator-verified, independent P0 review pending) plus first 120 lines of `packages/opencode/src/orchestration/budget.ts`.\n\n**Artifacts (paths + sha256 recorded in evidence)**\n- `packages/opencode/src/orchestration/{control,control-tool,service,policy,harness,usage,budget}.ts`\n- `packages/opencode/src/session/{prompt,llm}.ts`\n- Test: `packages/opencode/test/orchestration/budget-helper.test.ts` (per task scope; evidence notes invalid helper tests were replaced with real DB regressions)\n\n**Acceptance mapping (from evidence + observed source)**\n- `ledger` (40): `budget.ts:15-57` `reconcile` scopes assistant-message tokens per run from `prompt_start_id`/start-time to `time_finished`/`usage_end_time` (failure/cancellation windows counted) and updates `tokens_used` monotonically via `sql\\`max(...)\\`` — idempotent reconciliation. READY/lifetime exclusion asserted by operator evidence, not re-verified in my 120-line read.\n- `reserve` (40): `budget.ts:59-120` `spend` aggregates task/goal spend, adds manager-session assistant usage since `activated_at`, and folds in `result.reservation` (`inputEstimate`/`reservedOutput`) only for non-finalized pending/running/verifying runs with `excludeRunID` support; atomicity beyond line 120 not re-read.\n- `tests` (20): operator-recorded suites — unit/runtime 83, bootstrap HTTP/provider 15, HTTP faults 27, security 20, memory integrity 33, real Claude pilot 27 (all pass), typecheck `core` + `opencode`. Evidence: agent whole-module rewrites were rejected and pre-task source restored; live budget helper integrated preserving existing APIs — no runtime module overwritten.\n\n**Attribution & limits**: all test/typecheck execution and manual fixes (bootstrap Effect API/template errors, helper-test replacement) were performed by the **operator** because managed shell/executor was unavailable to workers; I ran no tests and wrote no code. Source changes remain uncommitted; input reservations are estimates; P1–P10 not implemented. Independent verifier should compare artifact hashes against the evidence file."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914035,
+      "data": {
+        "session": "ses_ec999cb46ffe0CDEEG0DYTWJ1p",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791914045,
+      "data": {
+        "key": "C0-budget-operation",
+        "runID": "run_bbb146a9-516e-44d7-931a-ff35af06afc9",
+        "status": "verifying",
+        "text": "**Delivery summary — task_721b4f71 (rev 4), read-only checkpoint: no files edited**\n\nScope: `write_paths` empty; I read only `packages/opencode/test/orchestration/p01-evidence.json` (88 lines) plus 118 lines of `packages/opencode/src/orchestration/service.ts` (2862–2979). Zero writes.\n\n**Actual artifacts (sha256 recorded in p01-evidence.json):**\n- `packages/opencode/src/orchestration/service.ts` — `updateGoalBudget`/`updateTaskBudget` (service.ts:2862, service.ts:2964): validates positive-integer cap, non-empty trimmed reason, actor session exists + not archived, binding is manager with idle/active status (goal) or same-project idle manager (task), same-project check inside the tx, exact CAS vs current cap including `null` (`expectedBudget`/`expectedMaxTokens`, ConflictError on mismatch), atomic `budget_tokens`/`scope.max_tokens` update with durable `goal.budget.updated`/`task.budget.updated` event carrying old/new cap + reason + actor — all in one `db.transaction`.\n- `packages/opencode/src/orchestration/control.ts:338–384` — operator `task_budget`/`goal_budget` control path with its own CAS rejection (control.ts:373).\n- Also hashed: `control-tool.ts`, `policy.ts`, `harness.ts`, `usage.ts`, `budget.ts`, `session/prompt.ts`, `session/llm.ts`.\n- Tests: `packages/opencode/test/orchestration/goal-budget.test.ts` + suites listed in evidence (unit/runtime 83, HTTP 15+27, security 20, memory 33, live pilot 27); typechecks `core`, `opencode`.\n\n**Attribution:** all tests/builds and source fixes were executed/applied by the **operator** (recorded interventions: shell/executor unavailable so operator ran tests, fixed bootstrap Effect API errors, rejected whole-module rewrites, integrated live budget helper with real DB regressions, empty-provider failure handling). **I ran no tests and wrote no code.** Evidence status: \"operator-verified implementation; independent P0 review pending\"; changes uncommitted, P1–P10 not implemented.\n\nPaused-goal persistence: no code path here touches goal `status`, so an atomic cap update leaves a paused goal paused (event payload only carries caps/reason/actor)."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914057,
+      "data": {
+        "session": "ses_ec9998d72ffezRTBK30ElLOAtS",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791914229,
+      "data": {
+        "key": "C0-budget-operation",
+        "runID": "run_78cb01a5-cb40-41a4-a668-64cff4d7fefc",
+        "status": "done",
+        "text": "Evidence reviewed. Recording verification receipts for each check."
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791914242,
+      "data": {
+        "key": "C2-budget-helper",
+        "runID": "run_b77ce9e3-d991-4f86-b614-f9384dd956bf",
+        "status": "done",
+        "text": "Backend receipt summary: all current acceptance checks passed independent artifact verification"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914245,
+      "data": {
+        "session": "ses_ec9968f5bffeRji4d9M6I2SGub",
+        "role": "implementer",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "execution",
+      "time": 1791914333,
+      "data": {
+        "key": "D-operator-route",
+        "runID": "run_200cf7ed-8812-421d-ab38-ab096a9e65ff",
+        "status": "verifying",
+        "text": "**Delivery summary — P0.1 wire trusted operator budget route (read-only checkpoint, revision 2)**\n\n- **Files changed: none.** `write_paths` is empty; I performed zero edits/writes (evidence file, component source, and AGENTS docs only).\n- **Route** (`route`, wt 60): `packages/opencode/src/server/routes/instance/httpapi/handlers/cvis.ts:47` — in the `command` handler, operations `goal_budget`/`task_budget` dispatch to `control.invokeOperator`; all other (model-facing) operations dispatch to `control.invoke`, both from the `OrchestrationControl.Service` yielded at line 31.\n- **Boundary** (`boundary`, wt 40): handler stays inside the declared `CvisHttpApi` group `cvis` (line 28; import line 4) and reuses the pre-existing `request(...)` → `InvalidRequestError` mapping (lines 11–26), so auth/schema/error contracts are untouched; budget routing occurs only at the operator command path, not in model-facing operations. `packages/opencode/test/orchestration/p01-evidence.json` carries hashes for `src/orchestration/control.ts`, `control-tool.ts`, `budget.ts`, `service.ts`, `policy.ts`, `harness.ts`, `usage.ts`, plus `session/prompt.ts`, `session/llm.ts`.\n- **Test/QA attribution (operator, not me):** I did not run tests. Evidence records operator-executed suites: unit/runtime 83, bootstrap HTTP/provider 15, HTTP faults 27, security 20, memory integrity 33, real Claude pilot 27, plus `core`/`opencode` typechecks, with operator interventions (executed builds/tests, fixed bootstrap Effect API errors, rejected whole-module rewrites, integrated live budget helper).\n- **Limits recorded:** input reservations are estimates, source changes uncommitted, P1–P10 not implemented."
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914341,
+      "data": {
+        "session": "ses_ec99528caffeYMS5W5fQj3HdP4",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791914518,
+      "data": {
+        "key": "D-operator-route",
+        "runID": "run_ef697459-abe6-4ad7-84a2-4d0252216f46",
+        "status": "failed",
+        "text": "CvisPolicyDenied: Budget exhausted for upcoming provider turn\n    at <anonymous> (/$bunfs/root/chunk-vc5053v6.js:30:6076)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2049)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2283)\n    at evaluate (/$bunfs/root/chunk-1p8s46m0.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-1p8s46m0.js:25:5704)\n    at processTicksAndRejections (native:7:39)\n    at SessionPrompt.run (/$bunfs/root/chunk-vc5053v6.js:50:15393)\n    at SessionPrompt.run (definition) (/$bunfs/root/chunk-vc5053v6.js:50:10077)\n    at SessionRunState.ensureRunning (/$bunfs/root/chunk-vc5053v6.js:50:15362)\n    at SessionRunState.ensureRunning (definition) (/$bunfs/root/chunk-rsryxywf.js:32:24512)\n    at SessionPrompt.loop (/$bunfs/root/chunk-vc5053v6.js:50:9827)\n    at SessionPrompt.loop (definition) (/$bunfs/root/chunk-vc5053v6.js:50:15297)\n    at SessionPrompt.prompt (/$bunfs/root/chunk-nteepwy6.js:11:387)\n    at SessionPrompt.prompt (definition) (/$bunfs/root/chunk-vc5053v6.js:50:9439)\n    at CvisHarness.execute (/$bunfs/root/chunk-nteepwy6.js:12:4551)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-nteepwy6.js:5:25471)"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914680,
+      "data": {
+        "session": "ses_ec98fef8dffe42RixuF4Kk7AWF",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791914687,
+      "data": {
+        "key": "D-operator-route",
+        "runID": "run_21cefcbf-c402-4ee4-8cd1-093eb923c547",
+        "status": "failed",
+        "text": "CvisPolicyDenied: Budget exhausted for upcoming provider turn\n    at <anonymous> (/$bunfs/root/chunk-vc5053v6.js:30:6076)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2049)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2283)\n    at evaluate (/$bunfs/root/chunk-1p8s46m0.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-1p8s46m0.js:25:5704)\n    at processTicksAndRejections (native:7:39)\n    at SessionPrompt.run (/$bunfs/root/chunk-vc5053v6.js:50:15393)\n    at SessionPrompt.run (definition) (/$bunfs/root/chunk-vc5053v6.js:50:10077)\n    at SessionRunState.ensureRunning (/$bunfs/root/chunk-vc5053v6.js:50:15362)\n    at SessionRunState.ensureRunning (definition) (/$bunfs/root/chunk-rsryxywf.js:32:24512)\n    at SessionPrompt.loop (/$bunfs/root/chunk-vc5053v6.js:50:9827)\n    at SessionPrompt.loop (definition) (/$bunfs/root/chunk-vc5053v6.js:50:15297)\n    at SessionPrompt.prompt (/$bunfs/root/chunk-nteepwy6.js:11:387)\n    at SessionPrompt.prompt (definition) (/$bunfs/root/chunk-vc5053v6.js:50:9439)\n    at CvisHarness.execute (/$bunfs/root/chunk-nteepwy6.js:12:4551)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-nteepwy6.js:5:25471)"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914695,
+      "data": {
+        "session": "ses_ec98fc2ecffeLpBGyJV5xFOIf0",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791914696,
+      "data": {
+        "key": "C1-live-budget",
+        "runID": "run_dbfb9d86-4db4-4e11-a2d7-01537e785393",
+        "status": "failed",
+        "text": "CvisPolicyDenied: Budget exhausted for upcoming provider turn\n    at <anonymous> (/$bunfs/root/chunk-vc5053v6.js:30:6076)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2049)\n    at runLoop (/$bunfs/root/chunk-1p8s46m0.js:25:2283)\n    at evaluate (/$bunfs/root/chunk-1p8s46m0.js:25:1437)\n    at <anonymous> (/$bunfs/root/chunk-1p8s46m0.js:25:5704)\n    at processTicksAndRejections (native:7:39)\n    at SessionPrompt.run (/$bunfs/root/chunk-vc5053v6.js:50:15393)\n    at SessionPrompt.run (definition) (/$bunfs/root/chunk-vc5053v6.js:50:10077)\n    at SessionRunState.ensureRunning (/$bunfs/root/chunk-vc5053v6.js:50:15362)\n    at SessionRunState.ensureRunning (definition) (/$bunfs/root/chunk-rsryxywf.js:32:24512)\n    at SessionPrompt.loop (/$bunfs/root/chunk-vc5053v6.js:50:9827)\n    at SessionPrompt.loop (definition) (/$bunfs/root/chunk-vc5053v6.js:50:15297)\n    at SessionPrompt.prompt (/$bunfs/root/chunk-nteepwy6.js:11:387)\n    at SessionPrompt.prompt (definition) (/$bunfs/root/chunk-vc5053v6.js:50:9439)\n    at CvisHarness.execute (/$bunfs/root/chunk-nteepwy6.js:12:4551)\n    at CvisHarness.execute (definition) (/$bunfs/root/chunk-nteepwy6.js:5:25471)"
+      }
+    },
+    {
+      "kind": "operator_budget_update",
+      "time": 1791914707,
+      "data": {
+        "old": 12000000,
+        "new": 14000000,
+        "reason": "Explicit operator bounded allocation for remaining C1/D independent QA after four components passed via Cline; retain previous usage and failure history",
+        "response": {
+          "accepted": true,
+          "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+          "budgetTokens": 14000000
+        }
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914711,
+      "data": {
+        "session": "ses_ec98f7619ffe7117zJ3nqKC8GQ",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791914932,
+      "data": {
+        "key": "D-operator-route",
+        "runID": "run_0dbac79d-be5b-40df-9982-2067640d3f69",
+        "status": "done",
+        "text": "Backend receipt summary: all current acceptance checks passed independent artifact verification"
+      }
+    },
+    {
+      "kind": "session_preparation",
+      "time": 1791914938,
+      "data": {
+        "session": "ses_ec98c0713ffeQZjgKMFKAhugHP",
+        "role": "verifier",
+        "model": {
+          "id": "cline-free/mimo-v2.6-flash",
+          "providerID": "cline",
+          "variant": "default"
+        }
+      }
+    },
+    {
+      "kind": "component_review",
+      "time": 1791915147,
+      "data": {
+        "key": "C1-live-budget",
+        "runID": "run_fa126c86-400d-4443-96b4-90bfba1cd0c9",
+        "status": "done",
+        "text": "Backend receipt summary: all current acceptance checks passed independent artifact verification"
+      }
+    },
+    {
+      "kind": "completed_with_independent_evidence",
+      "time": 1791915177,
+      "data": {
+        "goal": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+        "snapshot": {
+          "eventCursor": 386,
+          "goals": [
+            {
+              "id": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455",
+              "title": "P0 CVIS upgrade architecture preflight 2026-10-13",
+              "status": "completed",
+              "percent": 100,
+              "used": 2660175,
+              "cap": 4000000
+            },
+            {
+              "id": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17",
+              "title": "P0.1 CVIS orchestration bootstrap fixes",
+              "status": "completed",
+              "percent": 100,
+              "used": 12916632,
+              "cap": 14000000
+            }
+          ],
+          "columns": [
+            {
+              "status": "done",
+              "tasks": [
+                {
+                  "id": "task_b511a83b-52fb-42db-9bc1-9a89f931561d",
+                  "title": "P0 source-grounded upgrade preflight",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_db0d6c76-01a2-43c4-a970-aa669db1faac",
+                  "title": "P0.1 F1: preserve tool scope budgets and authoritative review identity",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_cddb1172-6068-44a3-ab73-a4ee4651fbc6",
+                  "title": "P0.1 finalize usage on all exits and compact assignment context",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_721b4f71-18c1-40f4-bba2-3b1b7ebb4148",
+                  "title": "P0.1 add authenticated operator budget CAS service",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_3e0c6307-5347-499a-ba6f-3c3d2c7cb578",
+                  "title": "P0.1 wire trusted operator budget route",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_cb6bd422-8c81-4523-afc3-43f1851cbc7b",
+                  "title": "P0.1 live budget admission, output caps and controlled task budget updates",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_3cc4ca8c-45ad-456c-a78d-aecb92b77c84",
+                  "title": "P0.1 implement isolated budget helper without rewriting runtime modules",
+                  "role": "implementer",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_eb054dea-c3c4-4c0a-94ba-996e01e66aa9",
+                  "title": "P0 final independent review",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_4d9a4b4a-53a4-41dd-9741-553b86ad0dc8",
+                  "title": "Final review A-contracts",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_89077d1b-4b9e-458e-972d-8b67e76f7f8b",
+                  "title": "Final review B-usage-context",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_98d30ede-d270-4ca7-af98-deb99ddf67c1",
+                  "title": "Final review C2-budget-helper",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_1d6620b5-550a-422d-a307-a72a643947b9",
+                  "title": "Final review C0-budget-operation",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_50eb9fac-0993-4420-b622-948ab6eee24e",
+                  "title": "Final review D-operator-route",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_701e0f53-2f79-4c99-91d5-fac5e620b76a",
+                  "title": "Final review C1-live-budget",
+                  "role": "verifier",
+                  "percent": 100,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "cancelled",
+              "tasks": [
+                {
+                  "id": "task_d46770b7-d43c-454d-aae8-24c239416197",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_13a582c6-1c44-4db5-b12f-e0db7ae3d599",
+                  "title": "Review: P0 source-grounded upgrade preflight",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_301f397e-87f6-44c8-942a-630b7c680443",
+                  "title": "Final review C1-live-budget",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_d5042d00-1e7f-4378-975a-44c07994443c",
+                  "title": "Final review D-operator-route",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_59112f7b-7236-4917-91f7-dc8776cb7c9a",
+                  "title": "Final review C2-budget-helper",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_a453510c-8964-44d3-b880-53640e949e26",
+                  "title": "Final review B-usage-context",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_caa02752-e5c6-40b3-8e5e-244aeca8751d",
+                  "title": "Final review C0-budget-operation",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_041b5f66-fac5-4dde-bc37-84b4d78e2c84",
+                  "title": "Final review A-contracts",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_2ce0f9f8-a3fd-4030-aeb6-0eff07b5150e",
+                  "title": "Final review A-contracts",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_694a7ba9-8ed2-4035-9972-89310a506f87",
+                  "title": "Final review B-usage-context",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_bbffd145-147c-4f78-97ef-80a92fca71bf",
+                  "title": "Final review A-contracts",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            },
+            {
+              "status": "failed",
+              "tasks": [
+                {
+                  "id": "task_fc50a28b-5dc8-40fc-bbef-49cfed506c9d",
+                  "title": "P0 final independent review",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_92c44084-346a-44e3-9fd4-32e7eaecc455"
+                },
+                {
+                  "id": "task_f270eaf5-2b0a-4ad8-8e62-f7d4d85f51c9",
+                  "title": "Final review C1-live-budget",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_d7bee0f4-30cf-4489-83c6-92c81c6850e7",
+                  "title": "Final review D-operator-route",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_2382fc6b-e3f1-41ff-8c4a-93038f75481d",
+                  "title": "Final review D-operator-route",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                },
+                {
+                  "id": "task_30d32fd8-96c2-489e-b6ae-bdb5b4023622",
+                  "title": "Final review C1-live-budget",
+                  "role": "verifier",
+                  "percent": 0,
+                  "goalID": "goal_0e2ea0a7-a72c-4f13-95a4-9dc95ea56a17"
+                }
+              ]
+            }
+          ],
+          "bindings": [
+            {
+              "session": "ses_eca7f2b20ffeMx5bdqzQNn12D6",
+              "role": "manager",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7e3e5affedmHrzPmUf9c6tr",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7dd9c8ffeEcCMrN1Cs6Rjw7",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca7418a4ffeSdQLs4TsDLiyTJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca73b995ffeucV7AnAvXuEoUi",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca558136ffegdUdtx3vvcexIJ",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47b3ffeC2NPhsICz7X0nc",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47baffeGglI0xEuXQ9iiO",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4b47aeffe7GpaMTKTejdryA",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca4129f1ffeXU1DWJ4vLUUvu7",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca3cbadfffeaVKDU3XboIZpkx",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca3cbaedffeqNxOmA48l0rGSW",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca355718ffevwwO1VownJRE4h",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca2c269affeK9e4lUiWHurOwY",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca209c74ffedMLdlPffQEmOh9",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_eca1b3ffaffe6CAETMoAw7Zmig",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9eb8093ffe1UUgYj2AthPFqU",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9e94938ffeBoaakRTaVzsNYF",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9df6cc4ffel7uMdJz7W449Zn",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9df106dffetKek2Wb1lKtr0J",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9cb658bffeXMpz3yc2lZ6WWT",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9cb659effee9DcNAoLNtT8TT",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9cb65b8ffehh8C63biJo20jN",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9c99bb7ffemtK4LjPeHkMQJ3",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9c99bb1ffeuAzXqSXmgU1ybl",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9c99b80ffeCf28KYzmwp0bd3",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9c99b7cffeWRoRTMB59kSjLn",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9c99b8fffeW5nPOkkyXi5luI",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9c99bbdffejnJxvByQ6keThf",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9b07fd7ffe6okGSJFpUUdxQL",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9a2738dffe3qwfi3f6ckRMKk",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9a1f8c2ffe1y71UNbclN7Jah",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec99f286effehRjjqhaxAZWFIX",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec99f2737ffe3SY5upZYC09iG1",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec99e605fffeht6BUc7qPSsEhH",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec99e51b0ffeEKHbMujXk3YWzm",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec99adf01ffeqvQPWFF2f69aDN",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec99a581effeby9HeKNQp1wly4",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec999cb46ffe0CDEEG0DYTWJ1p",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9998d72ffezRTBK30ElLOAtS",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec9968f5bffeRji4d9M6I2SGub",
+              "role": "implementer",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec99528caffeYMS5W5fQj3HdP4",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec98fef8dffe42RixuF4Kk7AWF",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec98fc2ecffeLpBGyJV5xFOIf0",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec98f7619ffe7117zJ3nqKC8GQ",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            },
+            {
+              "session": "ses_ec98c0713ffeQZjgKMFKAhugHP",
+              "role": "verifier",
+              "status": "idle",
+              "task": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

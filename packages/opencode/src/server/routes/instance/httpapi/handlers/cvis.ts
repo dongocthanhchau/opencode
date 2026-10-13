@@ -44,7 +44,11 @@ export const cvisHandlers = HttpApiBuilder.group(CvisHttpApi, "cvis", (handlers)
       .handle("detail", (ctx) => request(orchestration.taskDetail({ taskID: ctx.params.taskID })))
       .handle("command", (ctx) =>
         request(
-          control.invoke({ actor: ctx.payload.actor, operation: ctx.payload.operation, args: ctx.payload.arguments }),
+          (ctx.payload.operation === "goal_budget" || ctx.payload.operation === "task_budget" ? control.invokeOperator : control.invoke)({
+            actor: ctx.payload.actor,
+            operation: ctx.payload.operation,
+            args: ctx.payload.arguments,
+          }),
         ),
       )
       .handle("execute", (ctx) =>

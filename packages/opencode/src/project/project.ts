@@ -2,8 +2,21 @@ import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { and, eq, sql } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
 import { ProjectDirectoryTable, ProjectTable } from "@opencode-ai/core/project/sql"
+import {
+  MemoryArchiveTable,
+  MemoryFactTable,
+  MemoryItemTable,
+  MemoryTombstoneTable,
+  SessionTable,
+} from "@opencode-ai/core/session/sql"
+import {
+  CvisEventTable,
+  CvisMessageTable,
+  CvisProjectGoalTable,
+  CvisSessionBindingTable,
+  CvisTaskTable,
+} from "@opencode-ai/core/orchestration/sql"
 import { ProjectDirectories } from "@opencode-ai/core/project/directories"
-import { SessionTable } from "@opencode-ai/core/session/sql"
 import { WorkspaceTable } from "@opencode-ai/core/control-plane/workspace.sql"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { GlobalBus } from "@/bus/global"
@@ -173,6 +186,65 @@ const layer = Layer.effect(
               // list and rely on it being re-populated to ensure
               // accuracy
               yield* d.delete(ProjectDirectoryTable).where(eq(ProjectDirectoryTable.project_id, oldID)).run()
+
+              // Remap every managed reference before the old project row
+              // is deleted: those tables reference ProjectTable with
+              // onDelete cascade, so deleting first would silently drop
+              // goals, tasks, bindings, messages, events and memories.
+              yield* d
+                .update(CvisProjectGoalTable)
+                .set({ project_id: newID })
+                .where(eq(CvisProjectGoalTable.project_id, oldID))
+                .run()
+              yield* d
+                .update(CvisTaskTable)
+                .set({ project_id: newID })
+                .where(eq(CvisTaskTable.project_id, oldID))
+                .run()
+              yield* d
+                .update(CvisSessionBindingTable)
+                .set({ project_id: newID })
+                .where(eq(CvisSessionBindingTable.project_id, oldID))
+                .run()
+              yield* d
+                .update(CvisMessageTable)
+                .set({ project_id: newID })
+                .where(eq(CvisMessageTable.project_id, oldID))
+                .run()
+              yield* d
+                .update(CvisEventTable)
+                .set({ project_id: newID })
+                .where(eq(CvisEventTable.project_id, oldID))
+                .run()
+              for (const table of [MemoryFactTable, MemoryItemTable, MemoryTombstoneTable] as const) {
+                const oldRows = yield* d
+                  .select({ id: table.id, hash: table.hash })
+                  .from(table)
+                  .where(eq(table.project_id, oldID))
+                  .all()
+                if (oldRows.length === 0) continue
+                const taken = new Set(
+                  (
+                    yield* d
+                      .select({ hash: table.hash })
+                      .from(table)
+                      .where(eq(table.project_id, newID))
+                      .all()
+                  ).map((row) => row.hash),
+                )
+                for (const row of oldRows) {
+                  if (taken.has(row.hash)) yield* d.delete(table).where(eq(table.id, row.id)).run()
+                  else {
+                    yield* d.update(table).set({ project_id: newID }).where(eq(table.id, row.id)).run()
+                    taken.add(row.hash)
+                  }
+                }
+              }
+              yield* d
+                .update(MemoryArchiveTable)
+                .set({ project_id: newID })
+                .where(eq(MemoryArchiveTable.project_id, oldID))
+                .run()
 
               yield* d
                 .update(SessionTable)

@@ -1,4 +1,5 @@
-import { Context, Effect, Layer, Schema } from "effect"
+import { Cause, Context, Effect, Layer, Schema } from "effect"
+import { createBudget } from "./budget"
 import { eq, inArray } from "drizzle-orm"
 import path from "node:path"
 import { Database } from "@opencode-ai/core/database/database"
@@ -7,6 +8,7 @@ import { SessionTable } from "@opencode-ai/core/session/sql"
 import { ProjectTable } from "@opencode-ai/core/project/sql"
 import {
   CvisProjectGoalTable,
+  CvisManagedProjectTable,
   CvisSessionBindingTable,
   CvisTaskTable,
   CvisTaskRunTable,
@@ -25,6 +27,12 @@ export class Denied extends Schema.TaggedErrorClass<Denied>()("CvisPolicyDenied"
 export interface Interface {
   authorize: (input: { sessionID: string; tool: string; args: Record<string, unknown> }) => Effect.Effect<void, Denied>
   catalog: (input: { sessionID: string; tools: string[] }) => Effect.Effect<string[]>
+  prepareTurn: (input: {
+    sessionID: string
+    inputTokensEstimate: number
+    requestedOutputTokens?: number
+    requestID: string
+  }) => Effect.Effect<number | undefined, Denied>
 }
 export class Service extends Context.Service<Service, Interface>()("@opencode/CvisPolicy") {}
 
@@ -32,6 +40,22 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+    const ledger = createBudget(db)
+    // Effective skill allowlist for a bound session: the task scope wins,
+    // otherwise the managed project linked to the native project applies.
+    // Undefined means no restriction (preserve previous behavior).
+    const skillAllowlist = Effect.fn("CvisPolicy.skillAllowlist")(function* (projectID: string, scope: TaskScope) {
+      if (Array.isArray(scope.skills)) return scope.skills.filter((s): s is string => typeof s === "string")
+      const managed = yield* db
+        .select()
+        .from(CvisManagedProjectTable)
+        .where(eq(CvisManagedProjectTable.native_project_id, projectID))
+        .get()
+        .pipe(Effect.orDie)
+      const shared = (managed?.metadata as { skills?: unknown } | null | undefined)?.skills
+      if (Array.isArray(shared)) return shared.filter((s): s is string => typeof s === "string")
+      return undefined
+    })
     const authorize = Effect.fn("CvisPolicy.authorize")(function* (input: {
       sessionID: string
       tool: string
@@ -43,16 +67,18 @@ const layer = Layer.effect(
         .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
         .get()
         .pipe(Effect.orDie)
-      if (!binding) return
       const session = yield* db
         .select()
         .from(SessionTable)
         .where(eq(SessionTable.id, SessionID.make(input.sessionID)))
         .get()
         .pipe(Effect.orDie)
+      if (session?.time_archived != null) return yield* new Denied({ reason: "Session is archived" })
+      if (!binding) return
       if (!session || session.project_id !== binding.project_id)
         return yield* new Denied({ reason: "Invalid project/session binding" })
       if (binding.status === "paused") return yield* new Denied({ reason: "Session is paused" })
+      yield* ledger.reconcile(binding.project_id)
       const project = yield* db
         .select()
         .from(ProjectTable)
@@ -100,7 +126,7 @@ const layer = Layer.effect(
                   .all()
                   .pipe(Effect.orDie)
               : []
-            if (runs.reduce((sum, run) => sum + run.tokens_used, 0) >= goal.budget_tokens)
+            if ((yield* ledger.spend({ goalID: goal.id })) >= goal.budget_tokens)
               return yield* new Denied({ reason: "Project goal token budget exhausted" })
           }
         }
@@ -111,7 +137,7 @@ const layer = Layer.effect(
             .where(eq(CvisTaskRunTable.task_id, task.id))
             .all()
             .pipe(Effect.orDie)
-          if (runs.reduce((sum, run) => sum + run.tokens_used, 0) >= task.scope.max_tokens)
+          if ((yield* ledger.spend({ taskID: task.id })) >= task.scope.max_tokens)
             return yield* new Denied({ reason: "Task token budget exhausted" })
         }
         if (task.active_run_id) {
@@ -153,6 +179,14 @@ const layer = Layer.effect(
       )
         return
       const scope = (task?.scope ?? {}) as TaskScope
+      if (input.tool === "skill") {
+        const name = input.args["name"]
+        if (typeof name !== "string" || !name)
+          return yield* new Denied({ reason: "Skill name required" })
+        const allowlist = yield* skillAllowlist(binding.project_id, scope)
+        if (allowlist !== undefined && !allowlist.includes(name))
+          return yield* new Denied({ reason: `Skill not in project allowlist: ${name}` })
+      }
       const permission = ["edit", "write", "apply_patch"].includes(input.tool) ? "edit" : input.tool
       const rules = effectiveRuleset({
         role: binding.role as Role,
@@ -213,7 +247,7 @@ const layer = Layer.effect(
       const task = binding.task_id
         ? yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, binding.task_id)).get().pipe(Effect.orDie)
         : undefined
-      const allowed = new Set(["read", "glob", "grep", "cvis_task_detail", "cvis_snapshot"])
+      const allowed = new Set(["read", "glob", "grep", "skill", "cvis_task_detail", "cvis_snapshot"])
       if (binding.role === "manager")
         for (const name of [
           "cvis_create_task",
@@ -227,9 +261,25 @@ const layer = Layer.effect(
       if (["implementer", "maintenance"].includes(binding.role) && task?.scope?.write_paths?.length)
         for (const name of ["edit", "write", "apply_patch"]) allowed.add(name)
       if (binding.role === "researcher") for (const name of ["webfetch", "websearch"]) allowed.add(name)
+      if (allowed.has("skill")) {
+        const allowlist = yield* skillAllowlist(binding.project_id, (task?.scope ?? {}) as TaskScope)
+        if (allowlist !== undefined && allowlist.length === 0) allowed.delete("skill")
+      }
       return input.tools.filter((name) => allowed.has(name))
     })
-    return Service.of({ authorize, catalog })
+    const prepareTurn = (input: {
+      sessionID: string
+      inputTokensEstimate: number
+      requestedOutputTokens?: number
+      requestID: string
+    }) =>
+      ledger.prepareTurn(input).pipe(
+        Effect.catchCause((cause) => {
+          const error = Cause.squash(cause)
+          return Effect.fail(new Denied({ reason: error instanceof Error ? error.message : String(error) }))
+        }),
+      )
+    return Service.of({ authorize, catalog, prepareTurn })
   }),
 )
 
