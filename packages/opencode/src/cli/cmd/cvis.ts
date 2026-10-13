@@ -24,6 +24,11 @@ export const CvisCommand = cmd({
       .command(CvisTaskCancelCommand)
       .command(CvisRunSubmitCommand)
       .command(CvisInboxCommand)
+      .command(CvisCheckVerifyCommand)
+      .command(CvisTaskProgressCommand)
+      .command(CvisGoalProgressCommand)
+      .command(CvisTaskReviseCommand)
+      .command(CvisBudgetCommand)
       .command(CvisMessageSendCommand)
       .command(CvisMessageAckCommand)
       .command(CvisEventsCommand)
@@ -416,6 +421,105 @@ export const CvisInboxCommand = effectCmd({
     const svc = yield* Orchestration.Service
     const out = yield* run(svc
       .inbox({ sessionID: args.session as string, projectID: args.project as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisCheckVerifyCommand = effectCmd({
+  command: "check-verify <task> <check>",
+  describe: "record a verifier verdict for a checklist item",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("task", { type: "string", demandOption: true })
+      .positional("check", { type: "string", demandOption: true })
+      .option("run", { type: "string" })
+      .option("session", { type: "string", demandOption: true })
+      .option("verdict", { type: "string", default: "pass" })
+      .option("evidence", { type: "string", describe: "evidence as JSON" }),
+  handler: Effect.fn("Cli.cvis.checkVerify")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const verdict = args.verdict as string
+    if (verdict !== "pass" && verdict !== "fail") {
+      return yield* fail(`verdict must be pass or fail, got: ${verdict}`)
+    }
+    yield* run(
+      svc.verifyCheck({
+        taskID: args.task as string,
+        checkID: args.check as string,
+        runID: (args.run as string | undefined) ?? undefined,
+        sessionID: args.session as string,
+        verdict,
+        evidence: args.evidence ? (JSON.parse(args.evidence as string) as Record<string, unknown>) : undefined,
+      }),
+    )
+    UI.println("ok")
+  }),
+})
+
+export const CvisTaskProgressCommand = effectCmd({
+  command: "task-progress <id>",
+  describe: "show verified checklist progress for a task",
+  instance: false,
+  builder: (yargs) => yargs.positional("id", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.taskProgress")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.taskProgress({ taskID: args.id as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisGoalProgressCommand = effectCmd({
+  command: "goal-progress <id>",
+  describe: "show aggregated progress for a project goal",
+  instance: false,
+  builder: (yargs) => yargs.positional("id", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.goalProgress")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.goalProgress({ goalID: args.id as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTaskReviseCommand = effectCmd({
+  command: "task-revise <id>",
+  describe: "revise a task (bumps revision, snapshots previous plan)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .option("title", { type: "string" })
+      .option("description", { type: "string" })
+      .option("acceptance", { type: "string", describe: "checklist as JSON" }),
+  handler: Effect.fn("Cli.cvis.taskRevise")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.reviseTask({
+        taskID: args.id as string,
+        title: (args.title as string | undefined) ?? undefined,
+        description: (args.description as string | undefined) ?? undefined,
+        acceptance: args.acceptance
+          ? (JSON.parse(args.acceptance as string) as { id: string; label: string; weight: number }[])
+          : undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisBudgetCommand = effectCmd({
+  command: "budget",
+  describe: "show token spend vs cap for a goal or task",
+  instance: false,
+  builder: (yargs) => yargs.option("goal", { type: "string" }).option("task", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.budget")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.budget({
+        goalID: (args.goal as string | undefined) ?? undefined,
+        taskID: (args.task as string | undefined) ?? undefined,
+      }),
+    )
     UI.println(JSON.stringify(out))
   }),
 })

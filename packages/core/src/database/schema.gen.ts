@@ -87,6 +87,21 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`cvis_check\` (
+          \`id\` text PRIMARY KEY,
+          \`task_id\` text NOT NULL,
+          \`check_id\` text NOT NULL,
+          \`run_id\` text,
+          \`verifier_session\` text NOT NULL,
+          \`verdict\` text NOT NULL,
+          \`evidence\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`fk_cvis_check_task_id_cvis_task_id_fk\` FOREIGN KEY (\`task_id\`) REFERENCES \`cvis_task\`(\`id\`) ON DELETE CASCADE,
+          CONSTRAINT \`fk_cvis_check_run_id_cvis_task_run_id_fk\` FOREIGN KEY (\`run_id\`) REFERENCES \`cvis_task_run\`(\`id\`) ON DELETE SET NULL
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`cvis_event\` (
           \`id\` text PRIMARY KEY,
           \`project_id\` text NOT NULL,
@@ -179,6 +194,8 @@ export default {
           \`dependencies\` text,
           \`assigned_session\` text,
           \`attempt\` integer DEFAULT 0 NOT NULL,
+          \`revision\` integer DEFAULT 1 NOT NULL,
+          \`supersedes_task\` text,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL,
           CONSTRAINT \`fk_cvis_task_project_id_project_id_fk\` FOREIGN KEY (\`project_id\`) REFERENCES \`project\`(\`id\`) ON DELETE CASCADE,
@@ -450,6 +467,8 @@ export default {
       `)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
+      yield* tx.run(`CREATE INDEX \`cvis_check_task_idx\` ON \`cvis_check\` (\`task_id\`);`)
+      yield* tx.run(`CREATE UNIQUE INDEX \`cvis_check_task_check_idx\` ON \`cvis_check\` (\`task_id\`,\`check_id\`);`)
       yield* tx.run(
         `CREATE INDEX \`cvis_event_project_time_idx\` ON \`cvis_event\` (\`project_id\`,\`time_created\`,\`id\`);`,
       )

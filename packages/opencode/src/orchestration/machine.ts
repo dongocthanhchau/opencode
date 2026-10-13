@@ -65,6 +65,30 @@ export function canTransitionBinding(from: BindingStatus, to: BindingStatus): bo
   return BindingTransitions[from].includes(to)
 }
 
+export interface ChecklistItem {
+  id: string
+  label: string
+  weight: number
+}
+
+// Progress counts only verified checklist weight. Retries and revisions are
+// safe by construction: callers pass the current acceptance list, so removed
+// items drop out and re-verified items count once.
+export function checklistProgress(
+  acceptance: ChecklistItem[],
+  passed: Set<string> | string[],
+): { percent: number; passed: string[]; pending: string[] } {
+  const done = Array.isArray(passed) ? new Set(passed) : passed
+  const total = acceptance.reduce((sum, item) => sum + item.weight, 0)
+  if (total <= 0) return { percent: 0, passed: [], pending: acceptance.map((item) => item.id) }
+  const doneWeight = acceptance.filter((item) => done.has(item.id)).reduce((sum, item) => sum + item.weight, 0)
+  return {
+    percent: Math.floor((doneWeight / total) * 100),
+    passed: acceptance.filter((item) => done.has(item.id)).map((item) => item.id),
+    pending: acceptance.filter((item) => !done.has(item.id)).map((item) => item.id),
+  }
+}
+
 // Terminal states never leave, so a restarted manager can safely resume
 // anything else from durable state without re-deciding finished work.
 export function isTerminalTask(status: TaskStatus): boolean {

@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "732331c3-008a-4ec2-b1e5-915bc2de7509",
+  "id": "7e3c4ee1-cad6-47ee-8ac3-13ebeb461cf2",
   "prevIds": [
-    "76228f30-f85c-4283-8ca6-c28fa3339afe"
+    "732331c3-008a-4ec2-b1e5-915bc2de7509"
   ],
   "ddl": [
     {
@@ -36,6 +36,10 @@
     },
     {
       "name": "event",
+      "entityType": "tables"
+    },
+    {
+      "name": "cvis_check",
       "entityType": "tables"
     },
     {
@@ -597,6 +601,96 @@
       "name": "data",
       "entityType": "columns",
       "table": "event"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "task_id",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "check_id",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "run_id",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "verifier_session",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "verdict",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "evidence",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_created",
+      "entityType": "columns",
+      "table": "cvis_check"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "time_updated",
+      "entityType": "columns",
+      "table": "cvis_check"
     },
     {
       "type": "text",
@@ -1215,6 +1309,26 @@
       "default": "0",
       "generated": null,
       "name": "attempt",
+      "entityType": "columns",
+      "table": "cvis_task"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "1",
+      "generated": null,
+      "name": "revision",
+      "entityType": "columns",
+      "table": "cvis_task"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "supersedes_task",
       "entityType": "columns",
       "table": "cvis_task"
     },
@@ -2965,6 +3079,36 @@
     },
     {
       "columns": [
+        "task_id"
+      ],
+      "tableTo": "cvis_task",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_cvis_check_task_id_cvis_task_id_fk",
+      "entityType": "fks",
+      "table": "cvis_check"
+    },
+    {
+      "columns": [
+        "run_id"
+      ],
+      "tableTo": "cvis_task_run",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_cvis_check_run_id_cvis_task_run_id_fk",
+      "entityType": "fks",
+      "table": "cvis_check"
+    },
+    {
+      "columns": [
         "project_id"
       ],
       "tableTo": "project",
@@ -3481,6 +3625,15 @@
         "id"
       ],
       "nameExplicit": false,
+      "name": "cvis_check_pk",
+      "table": "cvis_check",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
       "name": "cvis_event_pk",
       "table": "cvis_event",
       "entityType": "pks"
@@ -3722,6 +3875,38 @@
       "name": "event_aggregate_type_seq_idx",
       "entityType": "indexes",
       "table": "event"
+    },
+    {
+      "columns": [
+        {
+          "value": "task_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "cvis_check_task_idx",
+      "entityType": "indexes",
+      "table": "cvis_check"
+    },
+    {
+      "columns": [
+        {
+          "value": "task_id",
+          "isExpression": false
+        },
+        {
+          "value": "check_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "cvis_check_task_check_idx",
+      "entityType": "indexes",
+      "table": "cvis_check"
     },
     {
       "columns": [

@@ -43,12 +43,34 @@ export const CvisTaskTable = sqliteTable(
     dependencies: text({ mode: "json" }).$type<string[]>(),
     assigned_session: text(),
     attempt: integer().notNull().default(0),
+    revision: integer().notNull().default(1),
+    supersedes_task: text(),
     ...Timestamps,
   },
   (table) => [
     index("cvis_task_project_idx").on(table.project_id),
     index("cvis_task_goal_idx").on(table.goal_id),
     index("cvis_task_status_idx").on(table.status),
+  ],
+)
+
+export const CvisCheckTable = sqliteTable(
+  "cvis_check",
+  {
+    id: text().primaryKey(),
+    task_id: text()
+      .notNull()
+      .references(() => CvisTaskTable.id, { onDelete: "cascade" }),
+    check_id: text().notNull(),
+    run_id: text().references(() => CvisTaskRunTable.id, { onDelete: "set null" }),
+    verifier_session: text().notNull(),
+    verdict: text().notNull(),
+    evidence: text({ mode: "json" }).$type<Record<string, unknown>>(),
+    ...Timestamps,
+  },
+  (table) => [
+    index("cvis_check_task_idx").on(table.task_id),
+    uniqueIndex("cvis_check_task_check_idx").on(table.task_id, table.check_id),
   ],
 )
 
