@@ -5,7 +5,7 @@ const TaskTransitions: Record<TaskStatus, TaskStatus[]> = {
   draft: ["queued", "cancelled"],
   queued: ["running", "cancelled"],
   running: ["verifying", "blocked", "paused", "failed", "cancelled"],
-  verifying: ["done", "failed", "running"],
+  verifying: ["done", "failed", "running", "paused", "cancelled"],
   blocked: ["queued", "cancelled"],
   paused: ["queued", "cancelled"],
   failed: ["queued", "cancelled"],

@@ -3,6 +3,8 @@ import { and, eq, gt } from "drizzle-orm"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ProjectV2 } from "@opencode-ai/core/project"
+import { Session } from "@/session/session"
+import { SessionID } from "../session/schema"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import {
   CvisEventTable,
@@ -23,7 +25,7 @@ import {
   RunStatus,
   TaskStatus,
 } from "./machine"
-import { Role, checkResolvedPaths, effectiveRuleset, validateScope } from "./roles"
+import { Role, checkResolvedPaths, effectiveRuleset, scopesOverlap, toRuleset, validateScope } from "./roles"
 import type { TaskScope } from "./roles"
 
 export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("CvisNotFound", {
@@ -36,6 +38,12 @@ export class InvalidTransitionError extends Schema.TaggedErrorClass<InvalidTrans
   id: Schema.String,
   from: Schema.String,
   to: Schema.String,
+}) {}
+
+export class ConflictError extends Schema.TaggedErrorClass<ConflictError>()("CvisConflict", {
+  entity: Schema.String,
+  id: Schema.String,
+  reason: Schema.String,
 }) {}
 
 export interface Interface {
@@ -66,6 +74,23 @@ export interface Interface {
     result?: Record<string, unknown>
     error?: string
   }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
+  readonly claimTask: (input: {
+    taskID: string
+    sessionID: string
+    projectDenies?: string[]
+  }) => Effect.Effect<{ runID: string; attempt: number }, NotFoundError | InvalidTransitionError | ConflictError>
+  readonly pauseTask: (input: { taskID: string; reason?: string }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
+  readonly cancelTask: (input: { taskID: string; reason?: string }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
+  readonly submitResult: (input: {
+    runID: string
+    result?: Record<string, unknown>
+    tokensUsed?: number
+    error?: string
+  }) => Effect.Effect<void, NotFoundError | InvalidTransitionError | ConflictError>
+  readonly inbox: (input: {
+    sessionID: string
+    projectID: string
+  }) => Effect.Effect<{ id: string; kind: string; from: string; taskID: string | null; body: unknown; time: number }[]>
   readonly bindSession: (input: {
     sessionID: string
     projectID: string
@@ -130,6 +155,7 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const { db } = yield* Database.Service
     const fs = yield* FSUtil.Service
+    const sessions = yield* Session.Service
 
     const recordEvent = Effect.fn("Cvis.recordEvent")(function* (
       tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
@@ -355,6 +381,295 @@ const layer = Layer.effect(
           }),
         )
         .pipe(Effect.orDie)
+    })
+
+    const claimTask = Effect.fn("Cvis.claimTask")(function* (input: {
+      taskID: string
+      sessionID: string
+      projectDenies?: string[]
+    }) {
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      if (task.status !== "queued") {
+        return yield* new InvalidTransitionError({ entity: "task", id: input.taskID, from: task.status, to: "running" })
+      }
+      const sinfo = yield* sessions
+        .get(SessionID.make(input.sessionID))
+        .pipe(Effect.mapError(() => new NotFoundError({ entity: "session", id: input.sessionID })))
+      if (sinfo.projectID !== task.project_id) {
+        return yield* new ConflictError({ entity: "task", id: input.taskID, reason: "session belongs to another project" })
+      }
+      const scope = (task.scope ?? {}) as TaskScope
+      const scopeErrors = validateScope(scope, { worktree: sinfo.directory, projectDenies: input.projectDenies })
+      if (scopeErrors.length > 0) {
+        return yield* new ConflictError({ entity: "task", id: input.taskID, reason: scopeErrors.join("; ") })
+      }
+      for (const dep of task.dependencies ?? []) {
+        const depRow = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, dep)).get().pipe(Effect.orDie)
+        if (!depRow || depRow.status !== "done") {
+          return yield* new ConflictError({ entity: "task", id: input.taskID, reason: `dependency not done: ${dep}` })
+        }
+      }
+      const active = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.project_id, task.project_id)).all().pipe(Effect.orDie)
+      const clashes = active.filter(
+        (other) =>
+          other.id !== task.id &&
+          (other.status === "running" || other.status === "verifying") &&
+          scopesOverlap(scope, (other.scope ?? {}) as TaskScope),
+      )
+      if (clashes.length > 0) {
+        return yield* new ConflictError({
+          entity: "task",
+          id: input.taskID,
+          reason: `write scope overlaps running task: ${clashes.map((c) => c.id).join(",")}`,
+        })
+      }
+      const current = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (current?.task_id != null && current.task_id !== input.taskID && current.status !== "idle") {
+        return yield* new InvalidTransitionError({ entity: "binding", id: input.sessionID, from: current.task_id, to: input.taskID })
+      }
+      // Enforce first: a committed claim must never leave a worker running
+      // without its narrowed ruleset, while a failed claim leaves the
+      // session untouched rather than over-restricted.
+      const ruleset = toRuleset(effectiveRuleset({ role: task.role as Role, scope }))
+      yield* sessions.setPermission({ sessionID: SessionID.make(input.sessionID), permission: ruleset })
+      const existing = ((sinfo.metadata ?? {}) as Record<string, unknown>) ?? {}
+      const cvis = { role: task.role, taskID: input.taskID, projectID: task.project_id }
+      yield* sessions.setMetadata({
+        sessionID: SessionID.make(input.sessionID),
+        metadata: { ...existing, cvis } as typeof existing,
+      })
+      const outcome = yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            const fresh = yield* tx.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get()
+            if (!fresh || fresh.status !== "queued") {
+              return yield* new InvalidTransitionError({
+                entity: "task",
+                id: input.taskID,
+                from: fresh?.status ?? "missing",
+                to: "running",
+              })
+            }
+            yield* tx.update(CvisTaskTable).set({ status: "running" }).where(eq(CvisTaskTable.id, input.taskID)).run()
+            const prior = yield* tx
+              .select({ attempt: CvisTaskRunTable.attempt })
+              .from(CvisTaskRunTable)
+              .where(eq(CvisTaskRunTable.task_id, input.taskID))
+              .all()
+            const attempt = prior.reduce((max, r) => Math.max(max, r.attempt), 0) + 1
+            const runID = newID("run")
+            yield* tx
+              .insert(CvisTaskRunTable)
+              .values({ id: runID, task_id: input.taskID, session_id: input.sessionID, attempt, status: "pending" })
+              .onConflictDoNothing()
+              .run()
+            const check = yield* tx
+              .select({ id: CvisTaskRunTable.id })
+              .from(CvisTaskRunTable)
+              .where(eq(CvisTaskRunTable.id, runID))
+              .get()
+            if (!check) {
+              return yield* new ConflictError({ entity: "task", id: input.taskID, reason: "concurrent claim won" })
+            }
+            yield* tx
+              .insert(CvisSessionBindingTable)
+              .values({
+                session_id: input.sessionID,
+                project_id: task.project_id,
+                role: task.role,
+                task_id: input.taskID,
+                manager_session: current?.manager_session ?? null,
+                status: "busy",
+              })
+              .onConflictDoUpdate({
+                target: CvisSessionBindingTable.session_id,
+                set: { role: task.role, task_id: input.taskID, status: "busy" },
+              })
+              .run()
+            yield* recordEvent(tx, {
+              projectID: task.project_id,
+              entity: "task",
+              entityID: input.taskID,
+              type: "task.claimed",
+              payload: { sessionID: input.sessionID, attempt },
+            })
+            return { runID, attempt }
+          }),
+        )
+        .pipe(Effect.orDie)
+      return outcome
+    })
+
+    const pauseTask = Effect.fn("Cvis.pauseTask")(function* (input: { taskID: string; reason?: string }) {
+      const row = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      if (!canTransitionTask(row.status as TaskStatus, "paused")) {
+        return yield* new InvalidTransitionError({ entity: "task", id: input.taskID, from: row.status, to: "paused" })
+      }
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx.update(CvisTaskTable).set({ status: "paused" }).where(eq(CvisTaskTable.id, input.taskID)).run()
+            const open = yield* tx
+              .select()
+              .from(CvisTaskRunTable)
+              .where(eq(CvisTaskRunTable.task_id, input.taskID))
+              .all()
+            for (const run of open) {
+              if (run.status === "running" || run.status === "pending" || run.status === "verifying") {
+                yield* tx
+                  .update(CvisTaskRunTable)
+                  .set({ status: "cancelled", error: "task paused", time_finished: Date.now() })
+                  .where(eq(CvisTaskRunTable.id, run.id))
+                  .run()
+                yield* recordEvent(tx, {
+                  projectID: row.project_id,
+                  entity: "run",
+                  entityID: run.id,
+                  type: "run.cancelled",
+                  payload: { reason: "task paused" },
+                })
+              }
+            }
+            yield* recordEvent(tx, {
+              projectID: row.project_id,
+              entity: "task",
+              entityID: input.taskID,
+              type: "task.paused",
+              payload: input.reason ? { reason: input.reason } : undefined,
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+    })
+
+    const cancelTask = Effect.fn("Cvis.cancelTask")(function* (input: { taskID: string; reason?: string }) {
+      const row = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      if (!canTransitionTask(row.status as TaskStatus, "cancelled")) {
+        return yield* new InvalidTransitionError({ entity: "task", id: input.taskID, from: row.status, to: "cancelled" })
+      }
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx.update(CvisTaskTable).set({ status: "cancelled" }).where(eq(CvisTaskTable.id, input.taskID)).run()
+            const open = yield* db
+              .select()
+              .from(CvisTaskRunTable)
+              .where(eq(CvisTaskRunTable.task_id, input.taskID))
+              .all()
+            for (const run of open) {
+              if (run.status === "running" || run.status === "pending" || run.status === "verifying") {
+                yield* tx
+                  .update(CvisTaskRunTable)
+                  .set({ status: "cancelled", error: "task cancelled", time_finished: Date.now() })
+                  .where(eq(CvisTaskRunTable.id, run.id))
+                  .run()
+              }
+            }
+            yield* recordEvent(tx, {
+              projectID: row.project_id,
+              entity: "task",
+              entityID: input.taskID,
+              type: "task.cancelled",
+              payload: input.reason ? { reason: input.reason } : undefined,
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+    })
+
+    const submitResult = Effect.fn("Cvis.submitResult")(function* (input: {
+      runID: string
+      result?: Record<string, unknown>
+      tokensUsed?: number
+      error?: string
+    }) {
+      const row = yield* db.select().from(CvisTaskRunTable).where(eq(CvisTaskRunTable.id, input.runID)).get().pipe(Effect.orDie)
+      if (!row) return yield* new NotFoundError({ entity: "run", id: input.runID })
+      if (row.status !== "running") {
+        return yield* new InvalidTransitionError({ entity: "run", id: input.runID, from: row.status, to: "verifying" })
+      }
+      const newer = yield* db
+        .select()
+        .from(CvisTaskRunTable)
+        .where(eq(CvisTaskRunTable.task_id, row.task_id))
+        .all()
+        .pipe(Effect.orDie)
+      const maxAttempt = newer.reduce((max, r) => Math.max(max, r.attempt), 0)
+      if (row.attempt < maxAttempt) {
+        const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, row.task_id)).get().pipe(Effect.orDie)
+        yield* db
+          .transaction((tx) =>
+            Effect.gen(function* () {
+              yield* recordEvent(tx, {
+                projectID: task?.project_id ?? "",
+                entity: "run",
+                entityID: input.runID,
+                type: "run.late-result-ignored",
+                payload: { attempt: row.attempt, maxAttempt },
+              })
+            }),
+          )
+          .pipe(Effect.orDie)
+        return yield* new ConflictError({ entity: "run", id: input.runID, reason: `stale attempt ${row.attempt}, latest is ${maxAttempt}` })
+      }
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, row.task_id)).get().pipe(Effect.orDie)
+      if (!task || task.status !== "running") {
+        return yield* new ConflictError({ entity: "run", id: input.runID, reason: "task is no longer running" })
+      }
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx
+              .update(CvisTaskRunTable)
+              .set({
+                status: "verifying",
+                result: input.result ?? null,
+                error: input.error ?? null,
+                tokens_used: input.tokensUsed ?? row.tokens_used,
+              })
+              .where(eq(CvisTaskRunTable.id, input.runID))
+              .run()
+            yield* recordEvent(tx, {
+              projectID: task.project_id,
+              entity: "run",
+              entityID: input.runID,
+              type: "run.submitted",
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+    })
+
+    const inbox = Effect.fn("Cvis.inbox")(function* (input: { sessionID: string; projectID: string }) {
+      const rows = yield* db
+        .select()
+        .from(CvisMessageTable)
+        .where(eq(CvisMessageTable.project_id, input.projectID))
+        .all()
+        .pipe(Effect.orDie)
+      return rows
+        .filter(
+          (row) =>
+            row.status === "sent" &&
+            (row.to_session === input.sessionID || (row.to_session == null && row.from_session !== input.sessionID)),
+        )
+        .sort((a, b) => a.time_created - b.time_created)
+        .map((row) => ({
+          id: row.id,
+          kind: row.kind,
+          from: row.from_session,
+          taskID: row.task_id,
+          body: row.body as unknown,
+          time: row.time_created,
+        }))
     })
 
     const bindSession = Effect.fn("Cvis.bindSession")(function* (input: {
@@ -601,6 +916,11 @@ const layer = Layer.effect(
 
     return Service.of({
       buildRuleset,
+      claimTask,
+      pauseTask,
+      cancelTask,
+      submitResult,
+      inbox,
       setBindingStatus,
       checkScope,
       resolveScope,
@@ -622,7 +942,7 @@ const layer = Layer.effect(
 export const node = LayerNode.make({
   service: Service,
   layer: layer,
-  deps: [Database.node, FSUtil.node],
+  deps: [Database.node, FSUtil.node, Session.node],
 })
 
 export * as Orchestration from "./service"

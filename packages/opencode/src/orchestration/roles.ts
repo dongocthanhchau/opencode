@@ -159,6 +159,19 @@ export function validateScope(
   return errors
 }
 
+// Two write scopes conflict when either root contains the other: concurrent
+// tasks must not edit overlapping trees. Pure so dispatch can check every
+// candidate pair before claiming.
+export function scopesOverlap(a: TaskScope, b: TaskScope): boolean {
+  const roots = (s: TaskScope) => (s.write_paths ?? []).map((r) => r.replace(/\/+$/, ""))
+  for (const x of roots(a)) {
+    for (const y of roots(b)) {
+      if (x === y || x.startsWith(`${y}/`) || y.startsWith(`${x}/`)) return true
+    }
+  }
+  return false
+}
+
 // Pure half of symlink enforcement: given already-resolved absolute paths,
 // report entries outside the worktree. Callers resolve with realpath first
 // (service method resolveScopePaths) so symlinks cannot smuggle paths out.
