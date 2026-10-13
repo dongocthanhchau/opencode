@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 import { Timestamps } from "../database/schema.sql"
 import { ProjectTable } from "../project/sql"
 import { SessionTable } from "../session/sql"
@@ -37,11 +37,16 @@ export const CvisTaskTable = sqliteTable(
       read_paths?: string[]
       write_paths?: string[]
       tools?: string[]
+      commands?: string[]
+      review_task_id?: string
+      review_revision?: number
       max_tokens?: number
     }>(),
     acceptance: text({ mode: "json" }).$type<{ id: string; label: string; weight: number }[]>(),
     dependencies: text({ mode: "json" }).$type<string[]>(),
     assigned_session: text(),
+    active_run_id: text(),
+    weight: integer().notNull().default(1),
     attempt: integer().notNull().default(0),
     revision: integer().notNull().default(1),
     supersedes_task: text(),
@@ -64,6 +69,7 @@ export const CvisCheckTable = sqliteTable(
     check_id: text().notNull(),
     run_id: text().references(() => CvisTaskRunTable.id, { onDelete: "set null" }),
     verifier_session: text().notNull(),
+    revision: integer().notNull().default(0),
     verdict: text().notNull(),
     evidence: text({ mode: "json" }).$type<Record<string, unknown>>(),
     ...Timestamps,
@@ -100,6 +106,8 @@ export const CvisTaskRunTable = sqliteTable(
       .references(() => CvisTaskTable.id, { onDelete: "cascade" }),
     session_id: text().notNull(),
     attempt: integer().notNull(),
+    revision: integer().notNull().default(1),
+    lease_expires: integer(),
     status: text().notNull().default("pending"),
     tokens_used: integer().notNull().default(0),
     result: text({ mode: "json" }).$type<Record<string, unknown>>(),
@@ -128,6 +136,9 @@ export const CvisSessionBindingTable = sqliteTable(
     task_id: text().references(() => CvisTaskTable.id, { onDelete: "set null" }),
     manager_session: text(),
     status: text().notNull().default("idle"),
+    permission_ceiling: text({ mode: "json" }).$type<
+      { permission: string; pattern: string; action: "allow" | "deny" | "ask" }[]
+    >(),
     ...Timestamps,
   },
   (table) => [index("cvis_binding_project_idx").on(table.project_id), index("cvis_binding_task_idx").on(table.task_id)],
@@ -168,6 +179,7 @@ export const CvisEventTable = sqliteTable(
     entity_kind: text().notNull(),
     entity_id: text().notNull(),
     type: text().notNull(),
+    sequence: integer().notNull().default(0),
     payload: text({ mode: "json" }).$type<Record<string, unknown>>(),
     ...Timestamps,
   },

@@ -70,7 +70,7 @@ import { lazy } from "@/util/lazy"
 import { CorsConfig, isAllowedCorsOrigin, type CorsOptions } from "@opencode-ai/server/cors"
 import { serveUIEffect } from "@/server/shared/ui"
 import { ServerAuth } from "@/server/auth"
-import { InstanceHttpApi, RootHttpApi } from "./api"
+import { CvisHttpApi, InstanceHttpApi, RootHttpApi } from "./api"
 import { Api } from "@opencode-ai/server/api"
 import { PublicApi } from "./public"
 import {
@@ -88,6 +88,10 @@ import { controlPlaneHandlers } from "./handlers/control-plane"
 import { experimentalHandlers } from "./handlers/experimental"
 import { fileHandlers } from "./handlers/file"
 import { globalHandlers } from "./handlers/global"
+import { cvisHandlers } from "./handlers/cvis"
+import { OrchestrationHarness } from "@/orchestration/harness"
+import { OrchestrationControl } from "@/orchestration/control"
+import { Orchestration } from "@/orchestration/service"
 import { instanceHandlers } from "./handlers/instance"
 import { mcpHandlers } from "./handlers/mcp"
 import { permissionHandlers } from "./handlers/permission"
@@ -146,6 +150,11 @@ const rootApiRoutes = HttpApiBuilder.layer(RootHttpApi).pipe(
 const eventApiRoutes = HttpApiBuilder.layer(EventApi).pipe(
   Layer.provide(eventHandlers),
   Layer.provide([httpApiAuthLayer, workspaceRoutingLive, instanceContextLayer]),
+)
+const cvisApiRoutes = HttpApiBuilder.layer(CvisHttpApi).pipe(
+  Layer.provide(cvisHandlers),
+  Layer.provide(schemaErrorLayer),
+  Layer.provide(httpApiAuthLayer),
 )
 const ptyConnectApiRoutes = HttpApiBuilder.layer(PtyConnectApi).pipe(
   Layer.provide(ptyConnectHandlers),
@@ -244,6 +253,9 @@ const app = LayerNode.group([
   SessionRevert.node,
   SessionSummary.node,
   SessionPrompt.node,
+  OrchestrationHarness.node,
+  OrchestrationControl.node,
+  Orchestration.node,
   Instruction.node,
   LLM.node,
   LSP.node,
@@ -275,6 +287,7 @@ export function createRoutes(
 
   return Layer.mergeAll(
     rootApiRoutes,
+    cvisApiRoutes,
     eventApiRoutes,
     ptyConnectApiRoutes,
     instanceRoutes,

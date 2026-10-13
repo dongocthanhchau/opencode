@@ -1,4 +1,14 @@
-export const TaskStatus = ["draft", "queued", "running", "verifying", "blocked", "paused", "failed", "cancelled", "done"] as const
+export const TaskStatus = [
+  "draft",
+  "queued",
+  "running",
+  "verifying",
+  "blocked",
+  "paused",
+  "failed",
+  "cancelled",
+  "done",
+] as const
 export type TaskStatus = (typeof TaskStatus)[number]
 
 const TaskTransitions: Record<TaskStatus, TaskStatus[]> = {
@@ -50,19 +60,19 @@ export const MessageKind = ["assign", "progress", "question", "blocked", "result
 export type MessageKind = (typeof MessageKind)[number]
 
 export function canTransitionTask(from: TaskStatus, to: TaskStatus): boolean {
-  return TaskTransitions[from].includes(to)
+  return TaskTransitions[from]?.includes(to) ?? false
 }
 
 export function canTransitionGoal(from: GoalStatus, to: GoalStatus): boolean {
-  return GoalTransitions[from].includes(to)
+  return GoalTransitions[from]?.includes(to) ?? false
 }
 
 export function canTransitionRun(from: RunStatus, to: RunStatus): boolean {
-  return RunTransitions[from].includes(to)
+  return RunTransitions[from]?.includes(to) ?? false
 }
 
 export function canTransitionBinding(from: BindingStatus, to: BindingStatus): boolean {
-  return BindingTransitions[from].includes(to)
+  return BindingTransitions[from]?.includes(to) ?? false
 }
 
 export interface ChecklistItem {

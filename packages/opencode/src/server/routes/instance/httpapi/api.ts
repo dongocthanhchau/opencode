@@ -29,6 +29,7 @@ import { makeApi } from "@opencode-ai/protocol/api"
 import { LocationMiddleware } from "@opencode-ai/server/location"
 import { SessionLocationMiddleware } from "@opencode-ai/server/middleware/session-location"
 import { GlobalApi } from "./groups/global"
+import { CvisApi } from "./groups/cvis"
 import { Authorization } from "./middleware/authorization"
 import { SchemaErrorMiddleware } from "./middleware/schema-error"
 
@@ -58,6 +59,11 @@ export const RootHttpApi = HttpApi.make("opencode-root")
   .middleware(SchemaErrorMiddleware)
   .middleware(Authorization)
 
+export const CvisHttpApi = HttpApi.make("cvis-root")
+  .addHttpApi(CvisApi)
+  .middleware(SchemaErrorMiddleware)
+  .middleware(Authorization)
+
 export const InstanceHttpApi = HttpApi.make("opencode-instance")
   .addHttpApi(ConfigApi)
   .addHttpApi(ExperimentalApi)
@@ -78,6 +84,7 @@ export const InstanceHttpApi = HttpApi.make("opencode-instance")
 
 export const OpenCodeHttpApi = HttpApi.make("opencode")
   .addHttpApi(RootHttpApi)
+  .addHttpApi(CvisHttpApi)
   .addHttpApi(EventApi)
   .addHttpApi(InstanceHttpApi)
   .addHttpApi(ServerApi)

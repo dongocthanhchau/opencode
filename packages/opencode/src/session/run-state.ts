@@ -9,6 +9,7 @@ import { SessionID } from "./schema"
 import { SessionStatus } from "./status"
 
 export interface Interface {
+  readonly isRunning: (sessionID: SessionID) => Effect.Effect<boolean>
   readonly assertNotBusy: (sessionID: SessionID) => Effect.Effect<void, Session.BusyError>
   readonly cancel: (sessionID: SessionID) => Effect.Effect<void>
   readonly ensureRunning: (
@@ -25,6 +26,7 @@ export interface Interface {
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/SessionRunState") {}
+const activeRunners = new Map<SessionID, Runner.Runner<SessionV1.WithParts>>()
 
 const layer = Layer.effect(
   Service,
@@ -38,10 +40,21 @@ const layer = Layer.effect(
         const runners = new Map<SessionID, Runner.Runner<SessionV1.WithParts>>()
         yield* Effect.addFinalizer(
           Effect.fnUntraced(function* () {
-            yield* Effect.forEach(runners.values(), (runner) => runner.cancel, {
-              concurrency: "unbounded",
-              discard: true,
-            })
+            yield* Effect.forEach(
+              runners.entries(),
+              ([id, runner]) =>
+                runner.cancel.pipe(
+                  Effect.tap(() =>
+                    Effect.sync(() => {
+                      if (activeRunners.get(id) === runner) activeRunners.delete(id)
+                    }),
+                  ),
+                ),
+              {
+                concurrency: "unbounded",
+                discard: true,
+              },
+            )
             runners.clear()
           }),
         )
@@ -59,12 +72,14 @@ const layer = Layer.effect(
       const next = Runner.make<SessionV1.WithParts>(data.scope, {
         onIdle: Effect.gen(function* () {
           data.runners.delete(sessionID)
+          activeRunners.delete(sessionID)
           yield* status.set(sessionID, { type: "idle" })
         }),
         onBusy: status.set(sessionID, { type: "busy" }),
         onInterrupt,
       })
       data.runners.set(sessionID, next)
+      activeRunners.set(sessionID, next)
       return next
     })
 
@@ -75,6 +90,11 @@ const layer = Layer.effect(
     })
 
     const cancel = Effect.fn("SessionRunState.cancel")(function* (sessionID: SessionID) {
+      const active = activeRunners.get(sessionID)
+      if (active) {
+        yield* active.cancel
+        return
+      }
       yield* cancelBackgroundJobs(background, sessionID)
       const data = yield* InstanceState.get(state)
       const existing = data.runners.get(sessionID)
@@ -104,7 +124,13 @@ const layer = Layer.effect(
         .pipe(Effect.catchTag("RunnerBusy", () => Effect.fail(busyError(sessionID))))
     })
 
-    return Service.of({ assertNotBusy, cancel, ensureRunning, startShell })
+    return Service.of({
+      assertNotBusy,
+      cancel,
+      ensureRunning,
+      startShell,
+      isRunning: (sessionID) => Effect.sync(() => activeRunners.get(sessionID)?.busy ?? false),
+    })
   }),
 )
 

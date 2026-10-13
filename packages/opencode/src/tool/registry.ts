@@ -10,6 +10,8 @@ import { GlobTool } from "./glob"
 import { GrepTool } from "./grep"
 import { ReadTool } from "./read"
 import { TaskTool } from "./task"
+import { ControlActions, ControlTool } from "@/orchestration/control-tool"
+import { OrchestrationControl } from "@/orchestration/control"
 import { Database } from "@opencode-ai/core/database/database"
 import { TodoWriteTool } from "./todo"
 import { WebFetchTool } from "./webfetch"
@@ -100,6 +102,8 @@ const layer = Layer.effect(
 
     const invalid = yield* InvalidTool
     const task = yield* TaskTool
+    const cvis = yield* ControlTool
+    const cvisActions = yield* Effect.all(ControlActions)
     const read = yield* ReadTool
     const question = yield* QuestionTool
     const todo = yield* TodoWriteTool
@@ -215,6 +219,7 @@ const layer = Layer.effect(
           edit: Tool.init(edit),
           write: Tool.init(writetool),
           task: Tool.init(task),
+          cvis: Tool.init(cvis),
           fetch: Tool.init(webfetch),
           todo: Tool.init(todo),
           search: Tool.init(websearch),
@@ -225,10 +230,12 @@ const layer = Layer.effect(
           plan: Tool.init(plan),
           ...(codeModeTool ? { execute: Tool.init(codeModeTool) } : {}),
         })
+        const cvisDefinitions = yield* Effect.all(cvisActions.map((action) => Tool.init(action)))
 
         return {
           custom,
           builtin: [
+            ...cvisDefinitions,
             tool.invalid,
             ...(questionEnabled ? [tool.question] : []),
             tool.shell,
@@ -238,6 +245,7 @@ const layer = Layer.effect(
             tool.edit,
             tool.write,
             tool.task,
+            tool.cvis,
             tool.fetch,
             tool.todo,
             tool.search,
@@ -429,6 +437,7 @@ export const node = LayerNode.make({
   layer,
   deps: [
     Config.node,
+    OrchestrationControl.node,
     Plugin.node,
     Question.node,
     Todo.node,

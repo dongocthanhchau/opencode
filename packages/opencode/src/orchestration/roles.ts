@@ -1,197 +1,164 @@
 import type { PermissionV1 } from "@opencode-ai/core/v1/permission"
+import { Wildcard } from "@opencode-ai/core/util/wildcard"
+import { realpathSync } from "node:fs"
+import path from "node:path"
 
 export const Role = ["manager", "researcher", "implementer", "verifier", "maintenance"] as const
 export type Role = (typeof Role)[number]
-
-type Rule = { permission: string; pattern: string; action: "allow" | "deny" | "ask" }
-
-// Base rulesets per role. These combine with project grants and per-task
-// scope at session creation; the runtime always evaluates
-// project ∩ role ∩ task, so a role can never widen a project grant.
-export function roleRules(role: Role): Rule[] {
-  switch (role) {
-    case "manager":
-      return [
-        { permission: "task", pattern: "*", action: "allow" },
-        { permission: "todowrite", pattern: "*", action: "allow" },
-      ]
-    case "researcher":
-      return [
-        { permission: "edit", pattern: "*", action: "deny" },
-        { permission: "bash", pattern: "*", action: "deny" },
-        { permission: "task", pattern: "*", action: "deny" },
-        { permission: "todowrite", pattern: "*", action: "deny" },
-        { permission: "webfetch", pattern: "*", action: "allow" },
-        { permission: "websearch", pattern: "*", action: "allow" },
-      ]
-    case "implementer":
-      return [
-        { permission: "task", pattern: "*", action: "deny" },
-        { permission: "todowrite", pattern: "*", action: "deny" },
-      ]
-    case "verifier":
-      return [
-        { permission: "edit", pattern: "*", action: "deny" },
-        { permission: "task", pattern: "*", action: "deny" },
-        { permission: "todowrite", pattern: "*", action: "deny" },
-      ]
-    case "maintenance":
-      return [
-        { permission: "edit", pattern: "*", action: "ask" },
-        { permission: "task", pattern: "*", action: "deny" },
-        { permission: "todowrite", pattern: "*", action: "deny" },
-      ]
-  }
-}
-
-// Pure path containment for task write scopes. Rejects `..` outright;
-// symlink resolution needs the filesystem and happens at enforcement time.
-export function pathAllowed(path: string, writePaths: string[]): boolean {
-  if (path.includes("..")) return false
-  const normalized = path.startsWith("/") ? path : `/${path}`
-  return writePaths.some((root) => {
-    const base = root.startsWith("/") ? root : `/${root}`
-    return normalized === base || normalized.startsWith(base.endsWith("/") ? base : `${base}/`)
-  })
-}
-
-export function toRuleset(rules: Rule[]): PermissionV1.Ruleset {
-  return rules as PermissionV1.Ruleset
-}
-
+export type Rule = { permission: string; pattern: string; action: "allow" | "deny" | "ask" }
 export const READ_TOOLS = ["read", "glob", "grep"] as const
 
 export interface TaskScope {
   read_paths?: string[]
   write_paths?: string[]
   tools?: string[]
+  commands?: string[]
   max_tokens?: number
   allow_outside?: boolean
+  review_task_id?: string
+  review_revision?: number
 }
 
-function deniesTool(rules: Rule[], tool: string): boolean {
-  return rules.some((rule) => rule.permission === tool && rule.pattern === "*" && rule.action === "deny")
+export function roleRules(role: Role): Rule[] {
+  if (!Role.includes(role)) throw new Error(`Unknown session role: ${role}`)
+  return [
+    { permission: "*", pattern: "*", action: "deny" },
+    ...READ_TOOLS.map((permission) => ({ permission, pattern: "*", action: "allow" as const })),
+    { permission: "lsp", pattern: "*", action: "allow" },
+    { permission: "skill", pattern: "*", action: "allow" },
+    { permission: "cvis_control", pattern: "*", action: "allow" },
+    ...[
+      "cvis_create_task",
+      "cvis_queue_task",
+      "cvis_task_detail",
+      "cvis_verify",
+      "cvis_revise_task",
+      "cvis_snapshot",
+      "cvis_goal_status",
+    ].map((permission) => ({ permission, pattern: "*", action: "allow" as const })),
+    ...(role === "researcher"
+      ? ["webfetch", "websearch"].map((permission) => ({ permission, pattern: "*", action: "allow" as const }))
+      : []),
+    ...(role === "manager"
+      ? ["task", "todowrite"].map((permission) => ({ permission, pattern: "*", action: "allow" as const }))
+      : []),
+    { permission: "edit", pattern: "*", action: "deny" },
+    { permission: "bash", pattern: "*", action: "deny" },
+    ...(role !== "manager"
+      ? ["task", "todowrite"].map((permission) => ({ permission, pattern: "*", action: "deny" as const }))
+      : []),
+  ]
 }
 
-// Scope may only narrow a role, never widen it: edit and tool allows from
-// the task scope are emitted only when the role itself does not deny them.
+function rootsRules(permission: string, roots: string[]): Rule[] {
+  return roots.flatMap((root) => {
+    const base = root.replace(/\/+$/, "") || "/"
+    return [base, `${base}/*`].map((pattern) => ({ permission, pattern, action: "allow" as const }))
+  })
+}
+
 export function effectiveRuleset(input: { projectRules?: Rule[]; role: Role; scope?: TaskScope }): Rule[] {
   const scope = input.scope ?? {}
   const base = roleRules(input.role)
-  const roleEditDenies = base.filter((rule) => rule.permission === "edit" && rule.action === "deny")
-  const roleRest = base.filter((rule) => !(rule.permission === "edit" && rule.action === "deny"))
-  const rules: Rule[] = [...(input.projectRules ?? []), ...roleRest]
-  const scoped = (scope.write_paths ?? []).length > 0
-  if (scoped || input.role === "implementer" || input.role === "maintenance") {
-    rules.push({ permission: "edit", pattern: "*", action: "deny" })
+  const rules: Rule[] = [...base]
+  if (scope.read_paths?.length) {
+    rules.push({ permission: "read", pattern: "*", action: "deny" }, ...rootsRules("read", scope.read_paths))
   }
-  if (roleEditDenies.length === 0) {
-    for (const root of scope.write_paths ?? []) {
-      const rel = root.replace(/\/+$/, "")
-      rules.push({ permission: "edit", pattern: rel, action: "allow" })
-      rules.push({ permission: "edit", pattern: `${rel}/*`, action: "allow" })
-    }
+  if (input.role === "implementer" || input.role === "maintenance") {
+    rules.push(...rootsRules("edit", scope.write_paths ?? []))
   }
-  for (const tool of scope.tools ?? []) {
-    if (deniesTool(base, tool)) continue
-    rules.push({ permission: tool, pattern: "*", action: "allow" })
-  }
-  for (const tool of READ_TOOLS) {
-    if (deniesTool(base, tool)) continue
-    rules.push({ permission: tool, pattern: "*", action: "allow" })
-  }
-  if (!deniesTool(base, "bash")) {
-    const allowBash = (scope.tools ?? []).includes("bash")
-    rules.push({ permission: "bash", pattern: "*", action: allowBash ? "allow" : "deny" })
-  }
-  rules.push(...roleEditDenies)
-  if (!scope.allow_outside) {
-    rules.push({ permission: "external_directory", pattern: "*", action: "deny" })
-  }
+  rules.push({ permission: "external_directory", pattern: "*", action: "deny" })
+  rules.push(...(input.projectRules ?? []).filter((rule) => rule.action === "deny"))
   return rules
 }
 
-// Explicit deny rules for every connected MCP tool except the allowlist.
-// MCP tools have no ask gate, so hiding via disabled()/visibleTools is the
-// enforcement mechanism; unknown future tools stay visible and must be
-// vetted at claim time.
-export function mcpDenyRules(toolIDs: string[], allowed: string[]): Rule[] {
-  const keep = new Set(allowed)
-  return toolIDs
-    .filter((id) => !keep.has(id))
-    .map((id) => ({ permission: id, pattern: "*", action: "deny" as const }))
+export function ceilingAllows(rules: Rule[], permission: string, pattern: string): boolean {
+  const matches = rules.filter(
+    (rule) => Wildcard.match(permission, rule.permission) && Wildcard.match(pattern, rule.pattern),
+  )
+  if (matches.some((rule) => rule.action === "deny")) return false
+  if (!rules.some((rule) => rule.action === "allow")) return true
+  return matches.some((rule) => rule.action === "allow")
 }
 
-// Pure claim-time validation: rejects escapes and overlaps with project
-// denies before any session is bound. Symlink targets need the filesystem
-// and are checked by resolveScopePaths.
-export function validateScope(
-  scope: TaskScope,
-  input: { worktree?: string; projectDenies?: string[] },
-): string[] {
+export function toRuleset(rules: Rule[]): PermissionV1.Ruleset {
+  return rules
+}
+
+export function pathAllowed(target: string, roots: string[]): boolean {
+  if (target.split(/[\\/]/).includes("..")) return false
+  const normalized = path.resolve("/", target)
+  return roots.some((root) => {
+    const base = path.resolve("/", root)
+    return normalized === base || normalized.startsWith(base === "/" ? "/" : `${base}/`)
+  })
+}
+
+export function canonicalPath(target: string): string {
+  let current = path.resolve(target)
+  const suffix: string[] = []
+  for (;;) {
+    try {
+      return path.join(realpathSync(current), ...suffix)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+      const parent = path.dirname(current)
+      if (parent === current) throw error
+      suffix.unshift(path.basename(current))
+      current = parent
+    }
+  }
+}
+
+export function validateScope(scope: TaskScope, input: { worktree?: string; projectDenies?: string[] }): string[] {
   const errors: string[] = []
-  const roots = [...(scope.write_paths ?? []), ...(scope.read_paths ?? [])]
-  for (const root of roots) {
-    if (!root || root.trim().length === 0) {
+  for (const root of [...(scope.write_paths ?? []), ...(scope.read_paths ?? [])]) {
+    if (!root.trim()) {
       errors.push("empty scope path")
       continue
     }
-    if (root.split("/").includes("..")) {
+    if (root.split(/[\\/]/).includes("..")) {
       errors.push(`scope escapes with ..: ${root}`)
       continue
     }
-    if (input.worktree && root.startsWith("/")) {
-      const base = input.worktree.replace(/\/+$/, "")
-      if (root !== base && !root.startsWith(`${base}/`)) {
-        errors.push(`scope outside worktree: ${root}`)
-      }
-    }
-  }
-  for (const deny of input.projectDenies ?? []) {
-    const clean = deny.replace(/\/+$/, "")
-    for (const root of roots) {
-      const rel = root.replace(/\/+$/, "")
-      if (rel === clean || rel.startsWith(`${clean}/`) || clean.startsWith(`${rel}/`)) {
+    if (input.worktree && path.isAbsolute(root) && !pathAllowed(root, [input.worktree]))
+      errors.push(`scope outside worktree: ${root}`)
+    for (const deny of input.projectDenies ?? []) {
+      if (pathAllowed(root, [deny]) || pathAllowed(deny, [root]))
         errors.push(`scope overlaps project deny: ${root} vs ${deny}`)
-      }
     }
   }
+  if (scope.allow_outside) errors.push("task scope cannot grant outside-project access")
   return errors
 }
 
-// Two write scopes conflict when either root contains the other: concurrent
-// tasks must not edit overlapping trees. Pure so dispatch can check every
-// candidate pair before claiming.
 export function scopesOverlap(a: TaskScope, b: TaskScope): boolean {
-  const roots = (s: TaskScope) => (s.write_paths ?? []).map((r) => r.replace(/\/+$/, ""))
-  for (const x of roots(a)) {
-    for (const y of roots(b)) {
-      if (x === y || x.startsWith(`${y}/`) || y.startsWith(`${x}/`)) return true
-    }
-  }
-  return false
+  return (a.write_paths ?? []).some((x) =>
+    (b.write_paths ?? []).some((y) => pathAllowed(x, [y]) || pathAllowed(y, [x])),
+  )
 }
 
-// Pure half of symlink enforcement: given already-resolved absolute paths,
-// report entries outside the worktree. Callers resolve with realpath first
-// (service method resolveScopePaths) so symlinks cannot smuggle paths out.
 export function checkResolvedPaths(
   worktree: string,
   resolved: { original: string; resolved: string | null }[],
 ): { escapes: string[]; missing: string[] } {
-  const base = worktree.replace(/\/+$/, "")
-  const escapes: string[] = []
-  const missing: string[] = []
-  for (const entry of resolved) {
-    if (entry.resolved == null) {
-      missing.push(entry.original)
-      continue
-    }
-    if (entry.resolved !== base && !entry.resolved.startsWith(`${base}/`)) {
-      escapes.push(entry.original)
-    }
+  return {
+    escapes: resolved
+      .filter((entry) => entry.resolved !== null && !pathAllowed(entry.resolved, [worktree]))
+      .map((entry) => entry.original),
+    missing: resolved.filter((entry) => entry.resolved === null).map((entry) => entry.original),
   }
-  return { escapes, missing }
+}
+
+export function mcpDenyRules(toolIDs: string[], allowed: string[]): Rule[] {
+  const known = new Set(toolIDs)
+  return [
+    { permission: "*", pattern: "*", action: "deny" },
+    ...READ_TOOLS.map((permission) => ({ permission, pattern: "*", action: "allow" as const })),
+    ...allowed
+      .filter((id) => known.has(id))
+      .map((permission) => ({ permission, pattern: "*", action: "allow" as const })),
+  ]
 }
 
 export * as OrchestrationRoles from "./roles"

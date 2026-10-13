@@ -28,6 +28,7 @@ import { SessionProcessor } from "@/session/processor"
 import { MemoryCapture } from "@/memory/capture"
 import { MemoryRecall } from "@/memory/recall"
 import { Orchestration } from "@/orchestration/service"
+import { OrchestrationPolicy } from "@/orchestration/policy"
 import { SessionCompaction } from "@/session/compaction"
 import { SessionRevert } from "@/session/revert"
 import { SessionSummary } from "@/session/summary"
@@ -91,6 +92,7 @@ export const AppLayer = AppNodeBuilderV1.build(
     MemoryCapture.node,
     MemoryRecall.node,
     Orchestration.node,
+    OrchestrationPolicy.node,
     SessionRevert.node,
     SessionSummary.node,
     SessionPrompt.node,

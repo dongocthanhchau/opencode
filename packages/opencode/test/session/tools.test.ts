@@ -17,6 +17,7 @@ import { Plugin } from "@/plugin"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Effect, Layer, Schema } from "effect"
 import { testEffect } from "../lib/effect"
+import { OrchestrationPolicy } from "@/orchestration/policy"
 
 const callID = "call-test"
 const sessionID = SessionID.make("ses_test")
@@ -64,6 +65,10 @@ const fakeTruncate = Truncate.Service.of({
 const layer = Layer.mergeAll(
   Layer.succeed(Plugin.Service, fakePlugin),
   Layer.succeed(Permission.Service, fakePermission),
+  Layer.succeed(
+    OrchestrationPolicy.Service,
+    OrchestrationPolicy.Service.of({ authorize: () => Effect.void, catalog: (input) => Effect.succeed(input.tools) }),
+  ),
   Layer.succeed(MCP.Service, fakeMcp()),
   Layer.succeed(Truncate.Service, fakeTruncate),
   RuntimeFlags.layer(),

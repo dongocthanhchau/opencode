@@ -23,6 +23,7 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { isRecord } from "@/util/record"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { OrchestrationPolicy } from "@/orchestration/policy"
 
 const MCP_RESOURCE_TOOLS = {
   list: "list_mcp_resources",
@@ -55,6 +56,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
   const mcp = yield* MCP.Service
   const truncate = yield* Truncate.Service
   const flags = yield* RuntimeFlags.Service
+  const policy = yield* OrchestrationPolicy.Service
 
   const context = (args: Record<string, unknown>, options: ToolExecutionOptions): Tool.Context => ({
     sessionID: input.session.id,
@@ -89,12 +91,16 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
         .pipe(Effect.orDie),
   })
 
-  for (const item of yield* registry.tools({
+  const availableTools = yield* registry.tools({
     modelID: ModelV2.ID.make(input.model.api.id),
     providerID: input.model.providerID,
     agent: input.agent,
     permission: input.session.permission,
-  })) {
+  })
+  const allowedTools = new Set(
+    yield* policy.catalog({ sessionID: input.session.id, tools: availableTools.map((item) => item.id) }),
+  )
+  for (const item of availableTools.filter((item) => allowedTools.has(item.id))) {
     const schema = ProviderTransform.schema(input.model, ToolJsonSchema.fromTool(item))
     tools[item.id] = tool({
       description: item.description,
@@ -108,6 +114,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
               { tool: item.id, sessionID: ctx.sessionID, callID: ctx.callID },
               { args },
             )
+            yield* policy.authorize({ sessionID: ctx.sessionID, tool: item.id, args: toRecord(args) })
             const result = yield* item.execute(args, ctx)
             const output = {
               ...result,
@@ -385,9 +392,14 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     })
   }
 
-  if (flags.experimentalCodeMode) return tools
+  const filteredCatalog = Effect.gen(function* () {
+    const visible = new Set(yield* policy.catalog({ sessionID: input.session.id, tools: Object.keys(tools) }))
+    return Object.fromEntries(Object.entries(tools).filter(([name]) => visible.has(name)))
+  })
+  if (flags.experimentalCodeMode) return yield* filteredCatalog
 
   for (const [key, entry] of Object.entries(yield* mcp.tools())) {
+    if (!(yield* policy.catalog({ sessionID: input.session.id, tools: [key] })).includes(key)) continue
     const item = McpCatalog.convertTool(entry.def, entry.client, entry.timeout)
     const execute = item.execute
     if (!execute) continue
@@ -405,6 +417,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
             { args },
           )
           const result: Awaited<ReturnType<NonNullable<typeof execute>>> = yield* Effect.gen(function* () {
+            yield* policy.authorize({ sessionID: ctx.sessionID, tool: key, args: toRecord(args) })
             yield* ctx.ask({ permission: key, metadata: {}, patterns: ["*"], always: ["*"] })
             return yield* Effect.promise(() => execute(args, opts))
           }).pipe(
@@ -489,7 +502,7 @@ export const resolve = Effect.fn("SessionTools.resolve")(function* (input: {
     tools[key] = item
   }
 
-  return tools
+  return yield* filteredCatalog
 })
 
 function toRecord(value: unknown) {

@@ -3,15 +3,13 @@ import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Permission } from "../../src/permission"
-import {
-  checkResolvedPaths,
-  effectiveRuleset,
-  mcpDenyRules,
-  validateScope,
-} from "../../src/orchestration/roles"
+import { checkResolvedPaths, effectiveRuleset, mcpDenyRules, validateScope } from "../../src/orchestration/roles"
 
-const decide = (rules: { permission: string; pattern: string; action: "allow" | "deny" | "ask" }[], permission: string, pattern: string) =>
-  Permission.evaluate(permission, pattern, rules as never).action
+const decide = (
+  rules: { permission: string; pattern: string; action: "allow" | "deny" | "ask" }[],
+  permission: string,
+  pattern: string,
+) => Permission.evaluate(permission, pattern, rules as never).action
 
 describe("effective ruleset enforcement", () => {
   test("implementer edits inside scope, denied outside", () => {
@@ -28,9 +26,10 @@ describe("effective ruleset enforcement", () => {
     expect(decide(rules, "read", "src/memory/capture.ts")).toBe("allow")
     expect(decide(rules, "webfetch", "https://example.com")).toBe("allow")
   })
-  test("verifier runs shell but cannot edit source", () => {
+  test("verifier cannot bypass read-only source through unrestricted shell", () => {
     const rules = effectiveRuleset({ role: "verifier", scope: { tools: ["bash"] } })
-    expect(decide(rules, "bash", "bun test")).toBe("allow")
+    expect(decide(rules, "bash", "bun test")).toBe("deny")
+    expect(decide(rules, "bash", 'python3 -c \'open("src/a.ts","w").write("changed")\'')).toBe("deny")
     expect(decide(rules, "edit", "src/memory/capture.ts")).toBe("deny")
     expect(decide(rules, "task", "coder")).toBe("deny")
   })
@@ -61,6 +60,26 @@ describe("effective ruleset enforcement", () => {
     const rules = effectiveRuleset({ role: "implementer", scope: { tools: ["task"] } })
     expect(decide(rules, "task", "coder")).toBe("deny")
   })
+  test("project deny is not overridden by task scope", () => {
+    const rules = effectiveRuleset({
+      role: "implementer",
+      projectRules: [{ permission: "edit", pattern: "src/private/*", action: "deny" }],
+      scope: { write_paths: ["src"] },
+    })
+    expect(decide(rules, "edit", "src/private/key.ts")).toBe("deny")
+  })
+  test("generic tools grant cannot override file scope", () => {
+    const rules = effectiveRuleset({
+      role: "implementer",
+      scope: { write_paths: ["src/allowed"], tools: ["edit", "write", "apply_patch"] },
+    })
+    expect(decide(rules, "edit", "src/forbidden.ts")).toBe("deny")
+  })
+  test("read paths restrict access", () => {
+    const rules = effectiveRuleset({ role: "researcher", scope: { read_paths: ["src/public"] } })
+    expect(decide(rules, "read", "src/public/data.ts")).toBe("allow")
+    expect(decide(rules, "read", "src/private/data.ts")).toBe("deny")
+  })
 })
 
 describe("scope validation", () => {
@@ -68,12 +87,8 @@ describe("scope validation", () => {
     expect(validateScope({ write_paths: ["src/../../etc"] }, {})).toHaveLength(1)
     expect(validateScope({ write_paths: ["/other/x"] }, { worktree: "/repo" })).toHaveLength(1)
     expect(validateScope({ write_paths: ["/repo/src"] }, { worktree: "/repo" })).toHaveLength(0)
-    expect(
-      validateScope({ write_paths: ["src/secret"] }, { projectDenies: ["src/secret"] }),
-    ).toHaveLength(1)
-    expect(
-      validateScope({ write_paths: ["src"] }, { projectDenies: ["src/secret"] }),
-    ).toHaveLength(1)
+    expect(validateScope({ write_paths: ["src/secret"] }, { projectDenies: ["src/secret"] })).toHaveLength(1)
+    expect(validateScope({ write_paths: ["src"] }, { projectDenies: ["src/secret"] })).toHaveLength(1)
     expect(validateScope({ write_paths: ["src/other"] }, { projectDenies: ["src/secret"] })).toHaveLength(0)
   })
 })
@@ -108,5 +123,9 @@ describe("mcp tool hiding", () => {
     const tools = { github_get_issue: {}, slack_post: {} }
     const rules = mcpDenyRules(["github_get_issue", "slack_post"], ["slack_post"])
     expect(Object.keys(Permission.visibleTools(tools, rules as never))).toEqual(["slack_post"])
+  })
+  test("newly connected MCP tools stay denied", () => {
+    const rules = mcpDenyRules(["known_read"], [])
+    expect(Object.keys(Permission.visibleTools({ known_read: {}, unexpected_write: {} }, rules))).toEqual([])
   })
 })

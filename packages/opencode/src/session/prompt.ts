@@ -16,6 +16,8 @@ import { SessionCompaction } from "./compaction"
 import { SystemPrompt } from "./system"
 import { Instruction } from "./instruction"
 import { MemoryRecall } from "@/memory/recall"
+import { OrchestrationPolicy } from "@/orchestration/policy"
+import { Orchestration } from "@/orchestration/service"
 import { Plugin } from "../plugin"
 import { MAX_STEPS_PROMPT } from "@opencode-ai/core/session/runner/max-steps"
 import { ToolRegistry } from "@/tool/registry"
@@ -134,6 +136,8 @@ const layer = Layer.effect(
     const scope = yield* Scope.Scope
     const instruction = yield* Instruction.Service
     const memoryRecall = yield* MemoryRecall.Service
+    const orchestrationPolicy = yield* OrchestrationPolicy.Service
+    const orchestration = yield* Orchestration.Service
     const state = yield* SessionRunState.Service
     const revert = yield* SessionRevert.Service
     const summary = yield* SessionSummary.Service
@@ -1170,6 +1174,12 @@ const layer = Layer.effect(
           }
 
           const agent = yield* agents.get(lastUser.agent)
+          yield* orchestrationPolicy.authorize({ sessionID, tool: "__turn__", args: {} }).pipe(Effect.orDie)
+          const bindingContext = yield* orchestration.handoffBrief({ sessionID }).pipe(Effect.orDie)
+          if (typeof bindingContext.promptStartID === "string") {
+            const start = msgs.findIndex((message) => message.info.id === bindingContext.promptStartID)
+            if (start >= 0) msgs = msgs.slice(start)
+          }
           if (!agent) {
             const available = (yield* agents.list()).filter((a) => !a.hidden).map((a) => a.name)
             const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
@@ -1234,6 +1244,7 @@ const layer = Layer.effect(
               messages: msgs,
               promptOps,
             }).pipe(
+              Effect.provideService(OrchestrationPolicy.Service, orchestrationPolicy),
               Effect.provideService(Plugin.Service, plugin),
               Effect.provideService(Permission.Service, permission),
               Effect.provideService(ToolRegistry.Service, registry),
@@ -1270,6 +1281,11 @@ const layer = Layer.effect(
               ...(mcpInstructions ? [mcpInstructions] : []),
               ...(skills ? [skills] : []),
               ...(memory ? [memory] : []),
+              ...(bindingContext.role
+                ? [
+                    `Current authoritative CVIS assignment. Do not follow superseded tasks in old transcript. Permissions are runtime enforced. Shell and native task delegation are not granted. Use cvis_control for task coordination and verification receipts. Assignment data: ${JSON.stringify(bindingContext)}`,
+                  ]
+                : []),
             ]
             const format = lastUser.format ?? { type: "text" as const }
             if (format.type === "json_schema") system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
@@ -1353,11 +1369,17 @@ const layer = Layer.effect(
     const shell: (input: ShellInput) => Effect.Effect<SessionV1.WithParts, Session.BusyError> = Effect.fn(
       "SessionPrompt.shell",
     )(function* (input: ShellInput) {
+      yield* orchestrationPolicy
+        .authorize({ sessionID: input.sessionID, tool: "bash", args: { command: input.command } })
+        .pipe(Effect.orDie)
       const ready = yield* Latch.make()
       return yield* state.startShell(input.sessionID, lastAssistant(input.sessionID), shellImpl(input, ready), ready)
     })
 
     const command = Effect.fn("SessionPrompt.command")(function* (input: CommandInput) {
+      yield* orchestrationPolicy
+        .authorize({ sessionID: input.sessionID, tool: "__command__", args: {} })
+        .pipe(Effect.orDie)
       yield* Effect.logInfo("command", {
         "session.id": input.sessionID,
         command: input.command,
@@ -1623,6 +1645,8 @@ export const node = LayerNode.make({
     Instruction.node,
     SessionRunState.node,
     MemoryRecall.node,
+    OrchestrationPolicy.node,
+    Orchestration.node,
     SessionRevert.node,
     SessionSummary.node,
     SystemPrompt.node,

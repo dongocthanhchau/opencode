@@ -20,13 +20,17 @@ describe("renderTemplate", () => {
     })
   })
   test("optional inputs may be absent", () => {
-    expect(
-      renderTemplate("A {{x}}.", [{ name: "x", required: false }], {}),
-    ).toEqual({ ok: true, text: "A {{x}}." })
+    expect(renderTemplate("A {{x}}.", [{ name: "x", required: false }], {})).toEqual({ ok: true, text: "A {{x}}." })
   })
   test("original request text is preserved verbatim", () => {
     const request = "Fix login, but keep legacy OAuthv1 flow intact!"
     const out = renderTemplate("Request: {{request}}", [{ name: "request", required: true }], { request })
     expect(out).toEqual({ ok: true, text: `Request: ${request}` })
+  })
+  test("placeholders in user content are not interpolated a second time", () => {
+    const request = "Keep literal {{other}} unchanged"
+    expect(
+      renderTemplate("Request: {{request}}", [{ name: "request", required: true }], { request, other: "REWRITTEN" }),
+    ).toEqual({ ok: true, text: `Request: ${request}` })
   })
 })
