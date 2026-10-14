@@ -40,6 +40,7 @@ export const CvisCommand = cmd({
       .command(CvisTemplateStatusCommand)
       .command(CvisTemplateRolloutCommand)
       .command(CvisTemplateMetricsCommand)
+      .command(CvisTemplateImportLibCommand)
       .command(CvisTemplateRenderCommand)
       .command(CvisContextPackCommand)
       .command(CvisHandoffCommand)
@@ -80,6 +81,7 @@ export const CvisCommand = cmd({
       .command(CvisMcpProbeCommand)
       .command(CvisHarnessAnalyzeCommand)
       .command(CvisHarnessApplyCommand)
+      .command(CvisSkillDistillCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -640,13 +642,13 @@ export const CvisTemplateListCommand = effectCmd({
 })
 
 export const CvisTemplateStatusCommand = effectCmd({
-  command: "template-status <name> <version> <status>",
+  command: "template-status <name> <ver> <status>",
   describe: "promote a canary (stable), retire a version, or send back to canary",
   instance: false,
   builder: (yargs) =>
     yargs
       .positional("name", { type: "string", demandOption: true })
-      .positional("version", { type: "number", demandOption: true })
+      .positional("ver", { type: "number", demandOption: true })
       .positional("status", { type: "string", demandOption: true, choices: ["stable", "canary", "retired"] })
       .option("session", { type: "string", demandOption: true, describe: "manager approving" }),
   handler: Effect.fn("Cli.cvis.templateStatus")(function* (args) {
@@ -654,7 +656,7 @@ export const CvisTemplateStatusCommand = effectCmd({
     const out = yield* run(
       svc.setTemplateStatus({
         name: args.name as string,
-        version: args.version as number,
+        version: args.ver as number,
         status: args.status as string,
         actorSessionID: args.session as string,
       }),
@@ -664,13 +666,13 @@ export const CvisTemplateStatusCommand = effectCmd({
 })
 
 export const CvisTemplateRolloutCommand = effectCmd({
-  command: "template-rollout <name> <version>",
+  command: "template-rollout <name> <ver>",
   describe: "set the rollout percent (0-100) of a canary template version",
   instance: false,
   builder: (yargs) =>
     yargs
       .positional("name", { type: "string", demandOption: true })
-      .positional("version", { type: "number", demandOption: true })
+      .positional("ver", { type: "number", demandOption: true })
       .option("pct", { type: "number", demandOption: true })
       .option("session", { type: "string", demandOption: true, describe: "manager approving" }),
   handler: Effect.fn("Cli.cvis.templateRollout")(function* (args) {
@@ -678,7 +680,7 @@ export const CvisTemplateRolloutCommand = effectCmd({
     const out = yield* run(
       svc.setTemplateRollout({
         name: args.name as string,
-        version: args.version as number,
+        version: args.ver as number,
         pct: args.pct as number,
         actorSessionID: args.session as string,
       }),
@@ -1434,6 +1436,50 @@ export const CvisHarnessApplyCommand = effectCmd({
         findingEventID: args.event as string,
         actorSessionID: args.session as string,
         approve: !(args.reject as boolean),
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTemplateImportLibCommand = effectCmd({
+  command: "template-import-lib",
+  describe: "import *.json prompt files as canary template versions (manager only)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("dir", { type: "string", demandOption: true, describe: "directory inside the project worktree" })
+      .option("session", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.templateImportLib")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.importPromptLibrary({
+        projectID: args.project as string,
+        dir: args.dir as string,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisSkillDistillCommand = effectCmd({
+  command: "skill-distill",
+  describe: "distill draft SKILL.md files from repeated done tasks (manager reviews before use)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("min-repeats", { type: "number" }),
+  handler: Effect.fn("Cli.cvis.skillDistill")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.distillSkills({
+        projectID: args.project as string,
+        actorSessionID: args.session as string,
+        minRepeats: (args["min-repeats"] as number | undefined) ?? undefined,
       }),
     )
     UI.println(JSON.stringify(out))

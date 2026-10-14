@@ -4,7 +4,7 @@ import path from "node:path"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { createHash, randomUUID } from "node:crypto"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises"
 import { createBudget } from "./budget"
 import { parsePluginManifest, parseSkillFile, renderSkillFile } from "./plugin-manifest"
 import { InstallationVersion } from "@opencode-ai/core/installation/version"
@@ -244,6 +244,16 @@ export interface Interface {
   readonly templateMetrics: (input: {
     name: string
   }) => Effect.Effect<{ version: number; status: string; runs: number; checks: number; passRate: number | null; avgTokens: number | null }[], NotFoundError>
+  readonly importPromptLibrary: (input: {
+    projectID: string
+    dir: string
+    actorSessionID: string
+  }) => Effect.Effect<{ imported: { name: string; version: number }[]; skipped: { file: string; reason: string }[] }, NotFoundError | InvalidTransitionError>
+  readonly distillSkills: (input: {
+    projectID: string
+    actorSessionID: string
+    minRepeats?: number
+  }) => Effect.Effect<{ role: string; count: number; path: string }[], NotFoundError | InvalidTransitionError>
   readonly contextPack: (input: { taskID: string }) => Effect.Effect<Record<string, unknown>, NotFoundError>
   readonly handoffBrief: (input: { sessionID: string }) => Effect.Effect<Record<string, unknown>, NotFoundError>
   readonly reuseCheck: (input: {
@@ -2673,6 +2683,73 @@ const layer = Layer.effect(
       return out.sort((a, b) => a.version - b.version)
     })
 
+    // Offline prompt library: operator-curated *.json files land as
+    // canary template versions ready for canary evaluation. Library
+    // files never go live directly; promote/rollback stays manual.
+    const importPromptLibrary = Effect.fn("Cvis.importPromptLibrary")(function* (input: {
+      projectID: string
+      dir: string
+      actorSessionID: string
+    }) {
+      yield* requireTemplateManager(input.actorSessionID)
+      const project = yield* db
+        .select()
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, ProjectV2.ID.make(input.projectID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!project) return yield* new NotFoundError({ entity: "project", id: input.projectID })
+      const worktree = canonicalPath(project.worktree)
+      const dir = canonicalPath(path.resolve(worktree, input.dir))
+      if (!pathAllowed(dir, [worktree]))
+        return yield* new InvalidTransitionError({ entity: "template", id: input.dir, from: input.dir, to: "directory escapes project worktree" })
+      const entries = yield* Effect.tryPromise({
+        try: () => readdir(dir),
+        catch: () => new NotFoundError({ entity: "template", id: input.dir }),
+      })
+      const files = entries.filter((name) => name.endsWith(".json")).sort().slice(0, 50)
+      const imported: { name: string; version: number }[] = []
+      const skipped: { file: string; reason: string }[] = []
+      for (const file of files) {
+        const raw = yield* Effect.tryPromise({
+          try: () => readFile(path.join(dir, file), "utf8"),
+          catch: () => new Error("unreadable"),
+        }).pipe(Effect.option)
+        if (raw._tag === "None" || raw.value.length > 32768) {
+          skipped.push({ file, reason: raw._tag === "None" ? "unreadable" : "too large" })
+          continue
+        }
+        const text = raw.value
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(text)
+        } catch {
+          skipped.push({ file, reason: "invalid JSON" })
+          continue
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          skipped.push({ file, reason: "not an object" })
+          continue
+        }
+        const rec = parsed as Record<string, unknown>
+        const outcome = yield* Effect.exit(
+          createTemplate({
+            name: typeof rec.name === "string" ? rec.name : file.replace(/\.json$/, ""),
+            role: typeof rec.role === "string" ? rec.role : undefined,
+            body: typeof rec.body === "string" ? rec.body : "",
+            inputs: Array.isArray(rec.inputs) ? (rec.inputs as { name: string; required: boolean }[]) : undefined,
+            status: "canary",
+          }),
+        )
+        if (outcome._tag === "Failure") {
+          skipped.push({ file, reason: "rejected by template validation" })
+          continue
+        }
+        imported.push({ name: typeof rec.name === "string" ? rec.name : file.replace(/\.json$/, ""), version: outcome.value.version })
+      }
+      return { imported, skipped }
+    })
+
     const contextPack = Effect.fn("Cvis.contextPack")(function* (input: { taskID: string }) {
       const task = yield* db
         .select()
@@ -4370,6 +4447,132 @@ const layer = Layer.effect(
       return { finding: finding.id, action: String(payload.action ?? ""), approved: approve }
     })
 
+    // Skill distill pipeline (item 7, automatic half): observe done tasks
+    // grouped by role; groups at/above threshold get a DRAFT SKILL.md in
+    // the worktree plus a skill.distilled event and a manager inbox
+    // question. The write-approval gate stays: nothing enters the
+    // allowlist without explicit manager promotion.
+    const distillSkills = Effect.fn("Cvis.distillSkills")(function* (input: {
+      projectID: string
+      actorSessionID: string
+      minRepeats?: number
+    }) {
+      yield* requireProjectParticipant({ projectID: input.projectID, actorSessionID: input.actorSessionID, managerOnly: false })
+      const minRepeats = input.minRepeats ?? 3
+      if (!Number.isSafeInteger(minRepeats) || minRepeats < 2 || minRepeats > 10)
+        return yield* new InvalidTransitionError({ entity: "skill", id: input.projectID, from: String(input.minRepeats), to: "minRepeats must be 2..10" })
+      const project = yield* db
+        .select()
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, ProjectV2.ID.make(input.projectID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!project) return yield* new NotFoundError({ entity: "project", id: input.projectID })
+      const done = yield* db
+        .select()
+        .from(CvisTaskTable)
+        .where(and(eq(CvisTaskTable.project_id, ProjectV2.ID.make(input.projectID)), eq(CvisTaskTable.status, "done")))
+        .all()
+        .pipe(Effect.orDie)
+      const groups = new Map<string, typeof done>()
+      for (const task of done) {
+        const list = groups.get(task.role) ?? []
+        list.push(task)
+        groups.set(task.role, list)
+      }
+      const distilled = yield* db
+        .select()
+        .from(CvisEventTable)
+        .where(and(eq(CvisEventTable.project_id, ProjectV2.ID.make(input.projectID)), eq(CvisEventTable.type, "skill.distilled")))
+        .all()
+        .pipe(Effect.orDie)
+      const haveDraft = new Set(
+        distilled.map((e) => String(((e.payload ?? {}) as Record<string, unknown>).role ?? "")),
+      )
+      const worktree = canonicalPath(project.worktree)
+      const drafts: { role: string; count: number; path: string }[] = []
+      for (const [role, tasks] of groups) {
+        if (tasks.length < minRepeats || haveDraft.has(role)) continue
+        const runs = tasks.length
+          ? yield* db
+              .select()
+              .from(CvisTaskRunTable)
+              .where(inArray(CvisTaskRunTable.task_id, tasks.map((t) => t.id)))
+              .all()
+              .pipe(Effect.orDie)
+          : []
+        const tokens = runs.map((r) => r.tokens_used ?? 0)
+        const avgTokens = tokens.length ? Math.round(tokens.reduce((a, b) => a + b, 0) / tokens.length) : null
+        const dirName = `auto-${role}-${tasks.length}x`
+        const dir = path.join(worktree, ".cvis", "skills", dirName)
+        const skillName = `${role}-flow`
+        const body = [
+          `# ${skillName}`,
+          ``,
+          `DRAFT distilled from ${tasks.length} completed ${role} tasks. Manager review required before allowlist promotion.`,
+          ``,
+          `## Observed pattern`,
+          ``,
+          ...tasks.slice(0, 10).map((t) => `- ${t.title}`),
+          ``,
+          `## Stats`,
+          ``,
+          `- completions: ${tasks.length}`,
+          `- runs: ${runs.length}`,
+          `- avg tokens/run: ${avgTokens ?? "unknown"}`,
+          ``,
+          `## Procedure (refine me)`,
+          ``,
+          `1. Claim a ${role} task in this project.`,
+          `2. Follow the acceptance checklist, verify each item with evidence.`,
+          `3. Report progress; submit the run for verification.`,
+          ``,
+        ].join("\n")
+        const text = renderSkillFile({
+          name: skillName,
+          description: `Distilled ${role} workflow from ${tasks.length} completed tasks in this project. DRAFT pending manager review.`,
+          body,
+        })
+        const target = path.join(dir, "SKILL.md")
+        const written = yield* Effect.exit(
+          Effect.tryPromise({
+            try: async () => {
+              await mkdir(dir, { recursive: true })
+              await writeFile(target, text, { flag: "wx" })
+            },
+            catch: (cause) => cause,
+          }),
+        )
+        if (written._tag === "Failure") continue
+        yield* db
+          .transaction((tx) =>
+            Effect.gen(function* () {
+              yield* recordEvent(tx, { projectID: input.projectID, entity: "project", entityID: input.projectID, type: "skill.distilled", payload: { role, count: tasks.length, runs: runs.length, avgTokens, path: target, by: input.actorSessionID } })
+            }),
+          )
+          .pipe(Effect.orDie)
+        const managers = yield* db
+          .select()
+          .from(CvisSessionBindingTable)
+          .where(and(eq(CvisSessionBindingTable.project_id, ProjectV2.ID.make(input.projectID)), eq(CvisSessionBindingTable.role, "manager")))
+          .all()
+          .pipe(Effect.orDie)
+        const managerSession = managers.find((m) => m.status === "busy" || m.status === "idle")?.session_id
+        if (managerSession) {
+          yield* sendMessage({
+            projectID: input.projectID,
+            fromSession: input.actorSessionID,
+            toSession: managerSession,
+            kind: "question",
+            body: { kind: "skill-approval", role, count: tasks.length, path: target },
+            idempotencyKey: `skill-distill-${input.projectID}-${role}`,
+          }).pipe(Effect.orElseSucceed(() => undefined))
+        }
+        drafts.push({ role, count: tasks.length, path: target })
+      }
+      return drafts
+    })
+
     const reviewReady = Effect.fn("Cvis.reviewReady")(function* (input: { sessionID: string }) {
       const actor = yield* db.select().from(CvisSessionBindingTable).where(eq(CvisSessionBindingTable.session_id, input.sessionID)).get().pipe(Effect.orDie)
       if (!actor || actor.role !== "verifier" || !actor.task_id || actor.status !== "busy") return false
@@ -4657,6 +4860,7 @@ const layer = Layer.effect(
       setTemplateStatus,
       setTemplateRollout,
       templateMetrics,
+      importPromptLibrary,
       contextPack,
       handoffBrief,
       reuseCheck,
@@ -4707,6 +4911,7 @@ const layer = Layer.effect(
       setManagedMetadata,
       analyzeTraces,
       applyFinding,
+      distillSkills,
       reviewReady,
       registerManagedProject,
       getManagedProject,
