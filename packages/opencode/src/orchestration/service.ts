@@ -1,6 +1,8 @@
 import { Context, Effect, Layer, Schema } from "effect"
 import { and, asc, eq, gt, inArray, isNull, lte, max, or } from "drizzle-orm"
 import path from "node:path"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 import { createHash, randomUUID } from "node:crypto"
 import { createBudget } from "./budget"
 import { Database } from "@opencode-ai/core/database/database"
@@ -117,6 +119,36 @@ export interface Interface {
     taskID: string
     reason?: string
   }) => Effect.Effect<void, NotFoundError | InvalidTransitionError>
+  readonly sweepOrphanedTasks: (input: {
+    projectID?: string
+  }) => Effect.Effect<{ paused: string[] }>
+  readonly runCheckCommand: (input: {
+    taskID: string
+    sessionID: string
+    command: string
+    timeoutMs?: number
+  }) => Effect.Effect<
+    { command: string; exitCode: number; output: string; truncated: boolean; durationMs: number },
+    NotFoundError | InvalidTransitionError | ConflictError
+  >
+  // Reminder/report flows ride on task events: no cron, no new tables.
+  // Reminders target any open task (even unassigned); reports come from
+  // the bound worker while the task is actively worked.
+  readonly remindTask: (input: {
+    taskID: string
+    sessionID: string
+    note?: string
+  }) => Effect.Effect<{ taskID: string; status: string }, NotFoundError | InvalidTransitionError | ConflictError>
+  readonly reportTask: (input: {
+    taskID: string
+    sessionID: string
+    text: string
+  }) => Effect.Effect<{ taskID: string; status: string }, NotFoundError | InvalidTransitionError | ConflictError>
+  readonly listTaskEvents: (input: {
+    taskID: string
+    sessionID: string
+    limit?: number
+  }) => Effect.Effect<{ id: string; type: string; payload: unknown; time: number }[], NotFoundError | InvalidTransitionError>
   readonly cancelTask: (input: {
     taskID: string
     reason?: string
@@ -329,6 +361,72 @@ function isMessageKind(kind: string): kind is MessageKind {
   return (
     ["assign", "progress", "question", "blocked", "result", "review", "cancel", "ack"] as readonly string[]
   ).includes(kind)
+}
+
+// Cross-project write arbitration: two running tasks in different native
+// projects may still resolve to the same real directory (nested checkouts,
+// shared repos). Compare canonical absolute write roots resolved against
+// each task's own root instead of raw relative scope strings.
+export function findWriteClash(input: {
+  taskID: string
+  scope: TaskScope
+  root: string
+  others: Pick<
+    typeof CvisTaskTable.$inferSelect,
+    "id" | "project_id" | "status" | "scope" | "assigned_session"
+  >[]
+  rootOf: (other: { project_id: string; assigned_session: string | null }) => string | null
+}): { id: string; project_id: string } | undefined {
+  const mine: TaskScope = {
+    ...input.scope,
+    write_paths: (input.scope.write_paths ?? []).map((r) => canonicalPath(path.resolve(input.root, r))),
+  }
+  for (const other of input.others) {
+    if (other.id === input.taskID) continue
+    if (other.status !== "running" && other.status !== "verifying") continue
+    const otherRoot = input.rootOf(other)
+    if (!otherRoot) continue
+    const otherScope = (other.scope ?? {}) as TaskScope
+    const theirs: TaskScope = {
+      ...otherScope,
+      write_paths: (otherScope.write_paths ?? []).map((r) => canonicalPath(path.resolve(otherRoot, r))),
+    }
+    if (scopesOverlap(mine, theirs)) return { id: other.id, project_id: other.project_id }
+  }
+  return undefined
+}
+
+const EXEC_OUTPUT_CAP = 65536
+
+function runAllowlistedCommand(input: {
+  cwd: string
+  command: string
+  timeoutMs: number
+}): Effect.Effect<{ exitCode: number; output: string; truncated: boolean; durationMs: number }> {
+  const started = Date.now()
+  const finish = (exitCode: number, output: string) => {
+    const truncated = output.length > EXEC_OUTPUT_CAP
+    return { exitCode, output: truncated ? output.slice(0, EXEC_OUTPUT_CAP) : output, truncated, durationMs: Date.now() - started }
+  }
+  return Effect.tryPromise({
+    try: () =>
+      promisify(execFile)("/bin/sh", ["-c", input.command], {
+        cwd: input.cwd,
+        timeout: input.timeoutMs,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true,
+      }).then(
+        (out) => finish(0, `${out.stdout ?? ""}${out.stderr ?? ""}`),
+        (err: { code?: unknown; stdout?: unknown; stderr?: unknown; killed?: boolean }) =>
+          finish(
+            err.killed ? 124 : typeof err.code === "number" ? err.code : 127,
+            `${typeof err.stdout === "string" ? err.stdout : ""}${typeof err.stderr === "string" ? err.stderr : ""}`,
+          ),
+      ),
+    catch: (err) => new Error(`check executor failed: ${err instanceof Error ? err.message : String(err)}`),
+  }).pipe(
+    Effect.catch(() => Effect.succeed(finish(127, "check executor unavailable"))),
+  )
 }
 
 const layer = Layer.effect(
@@ -790,23 +888,40 @@ const layer = Layer.effect(
           return yield* new ConflictError({ entity: "task", id: input.taskID, reason: `dependency not done: ${dep}` })
         }
       }
-      const active = yield* db
+      const running = yield* db
         .select()
         .from(CvisTaskTable)
-        .where(eq(CvisTaskTable.project_id, task.project_id))
+        .where(inArray(CvisTaskTable.status, ["running", "verifying"]))
         .all()
         .pipe(Effect.orDie)
-      const clashes = active.filter(
-        (other) =>
-          other.id !== task.id &&
-          (other.status === "running" || other.status === "verifying") &&
-          scopesOverlap(scope, (other.scope ?? {}) as TaskScope),
-      )
-      if (clashes.length > 0) {
+      const sessionDirs = yield* db
+        .select({ id: SessionTable.id, directory: SessionTable.directory })
+        .from(SessionTable)
+        .all()
+        .pipe(Effect.orDie)
+      const projectRoots = yield* db
+        .select({ id: ProjectTable.id, worktree: ProjectTable.worktree })
+        .from(ProjectTable)
+        .all()
+        .pipe(Effect.orDie)
+      const clash = findWriteClash({
+        taskID: input.taskID,
+        scope,
+        root,
+        others: running,
+        rootOf: (other) => {
+          if (other.assigned_session) {
+            const hit = sessionDirs.find((s) => String(s.id) === other.assigned_session)
+            if (hit) return hit.directory
+          }
+          return projectRoots.find((p) => String(p.id) === other.project_id)?.worktree ?? null
+        },
+      })
+      if (clash) {
         return yield* new ConflictError({
           entity: "task",
           id: input.taskID,
-          reason: `write scope overlaps running task: ${clashes.map((c) => c.id).join(",")}`,
+          reason: `write scope overlaps running task ${clash.id} in project ${clash.project_id}`,
         })
       }
       const current = yield* db
@@ -870,21 +985,31 @@ const layer = Layer.effect(
             const activeTasks = yield* tx
               .select()
               .from(CvisTaskTable)
-              .where(eq(CvisTaskTable.project_id, task.project_id))
+              .where(inArray(CvisTaskTable.status, ["running", "verifying"]))
               .all()
-            const normalizedScope = (value: TaskScope): TaskScope => ({
-              ...value,
-              write_paths: (value.write_paths ?? []).map((r) => canonicalPath(path.resolve(root, r))),
+            const txSessions = yield* tx
+              .select({ id: SessionTable.id, directory: SessionTable.directory })
+              .from(SessionTable)
+              .all()
+            const txProjects = yield* tx
+              .select({ id: ProjectTable.id, worktree: ProjectTable.worktree })
+              .from(ProjectTable)
+              .all()
+            const txClash = findWriteClash({
+              taskID: task.id,
+              scope,
+              root,
+              others: activeTasks,
+              rootOf: (other) => {
+                if (other.assigned_session) {
+                  const hit = txSessions.find((s) => String(s.id) === other.assigned_session)
+                  if (hit) return hit.directory
+                }
+                return txProjects.find((p) => String(p.id) === other.project_id)?.worktree ?? null
+              },
             })
-            if (
-              activeTasks.some(
-                (other) =>
-                  other.id !== task.id &&
-                  ["running", "verifying"].includes(other.status) &&
-                  scopesOverlap(normalizedScope(scope), normalizedScope(other.scope ?? {})),
-              )
-            ) {
-              return yield* new ConflictError({ entity: "task", id: task.id, reason: "overlapping active write scope" })
+            if (txClash) {
+              return yield* new ConflictError({ entity: "task", id: task.id, reason: `overlapping active write scope with task ${txClash.id} in project ${txClash.project_id}` })
             }
             if (task.goal_id) {
               const goal = yield* tx
@@ -1026,6 +1151,206 @@ const layer = Layer.effect(
         .pipe(Effect.orDie)
       for (const run of runs)
         yield* runState.cancel(SessionID.make(run.session_id)).pipe(Effect.catchCause(() => Effect.void))
+    })
+
+    // Manager failure handling: a running/verifying task whose worker
+    // session is archived, missing, or never assigned can never complete.
+    // Pause it (releasing bindings, cancelling open runs) so a manager can
+    // revise and requeue instead of watching a stuck task.
+    const sweepOrphanedTasks = Effect.fn("Cvis.sweepOrphanedTasks")(function* (input: { projectID?: string }) {
+      const tasks = yield* db
+        .select()
+        .from(CvisTaskTable)
+        .where(
+          input.projectID !== undefined
+            ? and(eq(CvisTaskTable.project_id, input.projectID), inArray(CvisTaskTable.status, ["running", "verifying"]))
+            : inArray(CvisTaskTable.status, ["running", "verifying"]),
+        )
+        .all()
+        .pipe(Effect.orDie)
+      const paused: string[] = []
+      for (const task of tasks) {
+        if (task.assigned_session) {
+          const worker = yield* db
+            .select()
+            .from(SessionTable)
+            .where(eq(SessionTable.id, SessionID.make(task.assigned_session)))
+            .get()
+            .pipe(Effect.orDie)
+          if (worker && worker.time_archived == null) continue
+        }
+        const outcome = yield* pauseTask({ taskID: task.id, reason: "worker session gone" }).pipe(Effect.exit)
+        if (outcome._tag === "Success") paused.push(task.id)
+      }
+      return { paused }
+    })
+
+    // Independent check executor: runs exactly one manager-allowlisted
+    // command string for a bound implementer/verifier session. The model
+    // cannot alter the string (exact match only), execution is confined to
+    // the session directory with a timeout and output cap, and every run
+    // returns a receipt instead of throwing on nonzero exits.
+    const runCheckCommand = Effect.fn("Cvis.runCheckCommand")(function* (input: {
+      taskID: string
+      sessionID: string
+      command: string
+      timeoutMs?: number
+    }) {
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      const actor = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!actor || (actor.role !== "implementer" && actor.role !== "verifier") || actor.task_id !== task.id)
+        return yield* new InvalidTransitionError({ entity: "check", id: input.taskID, from: input.sessionID, to: "bound implementer or verifier required" })
+      const runner = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, SessionID.make(input.sessionID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!runner || runner.time_archived !== null || runner.project_id !== task.project_id || actor.project_id !== task.project_id)
+        return yield* new InvalidTransitionError({ entity: "check", id: input.taskID, from: input.sessionID, to: "active project session required" })
+      if (task.status !== "running" && task.status !== "verifying")
+        return yield* new InvalidTransitionError({ entity: "task", id: task.id, from: task.status, to: "task is not running" })
+      if (task.goal_id) {
+        const goal = yield* db
+          .select()
+          .from(CvisProjectGoalTable)
+          .where(eq(CvisProjectGoalTable.id, task.goal_id))
+          .get()
+          .pipe(Effect.orDie)
+        if (!goal || goal.status !== "active")
+          return yield* new ConflictError({ entity: "goal", id: task.goal_id, reason: "goal is not active" })
+      }
+      const allowlist = ((task.scope ?? {}) as TaskScope).commands ?? []
+      if (!allowlist.includes(input.command))
+        return yield* new InvalidTransitionError({ entity: "check", id: input.taskID, from: input.command, to: "command not in task allowlist" })
+      const timeoutMs = input.timeoutMs ?? 120_000
+      if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 600_000)
+        return yield* new InvalidTransitionError({ entity: "check", id: input.taskID, from: String(input.timeoutMs), to: "timeout must be 100..600000 ms" })
+      const receipt = yield* runAllowlistedCommand({ cwd: runner.directory, command: input.command, timeoutMs })
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* recordEvent(tx, {
+              projectID: task.project_id,
+              entity: "check",
+              entityID: `${task.id}:exec`,
+              type: "check.executed",
+              payload: { command: input.command, exitCode: receipt.exitCode, truncated: receipt.truncated, durationMs: receipt.durationMs, sessionID: input.sessionID },
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+      return { ...receipt, command: input.command }
+    })
+
+    const OPEN_TASK_STATUS = ["draft", "queued", "running", "verifying", "blocked", "paused"]
+
+    const loadTaskContext = Effect.fn("Cvis.loadTaskContext")(function* (input: { taskID: string; sessionID: string }) {
+      const task = yield* db.select().from(CvisTaskTable).where(eq(CvisTaskTable.id, input.taskID)).get().pipe(Effect.orDie)
+      if (!task) return yield* new NotFoundError({ entity: "task", id: input.taskID })
+      const actor = yield* db
+        .select()
+        .from(CvisSessionBindingTable)
+        .where(eq(CvisSessionBindingTable.session_id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!actor)
+        return yield* new InvalidTransitionError({ entity: "task", id: input.taskID, from: input.sessionID, to: "bound session required" })
+      const runner = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, SessionID.make(input.sessionID)))
+        .get()
+        .pipe(Effect.orDie)
+      if (!runner || runner.time_archived !== null || runner.project_id !== task.project_id || actor.project_id !== task.project_id)
+        return yield* new InvalidTransitionError({ entity: "task", id: input.taskID, from: input.sessionID, to: "active project session required" })
+      return { task, actor }
+    })
+
+    const requireActiveGoal = Effect.fn("Cvis.requireActiveGoal")(function* (task: { goal_id: string | null; id: string }) {
+      if (!task.goal_id) return
+      const goal = yield* db
+        .select()
+        .from(CvisProjectGoalTable)
+        .where(eq(CvisProjectGoalTable.id, task.goal_id))
+        .get()
+        .pipe(Effect.orDie)
+      if (!goal || goal.status !== "active")
+        return yield* new ConflictError({ entity: "goal", id: task.goal_id, reason: "goal is not active" })
+    })
+
+    const remindTask = Effect.fn("Cvis.remindTask")(function* (input: { taskID: string; sessionID: string; note?: string }) {
+      const { task, actor } = yield* loadTaskContext(input)
+      if (!OPEN_TASK_STATUS.includes(task.status as (typeof OPEN_TASK_STATUS)[number]))
+        return yield* new InvalidTransitionError({ entity: "task", id: task.id, from: task.status, to: "task is closed" })
+      yield* requireActiveGoal(task)
+      // Either a participant of this task or a manager of the project
+      // (which covers open tasks with no worker assigned yet).
+      if (actor.task_id !== task.id && !(actor.role === "manager" && actor.project_id === task.project_id))
+        return yield* new InvalidTransitionError({ entity: "task", id: task.id, from: input.sessionID, to: "bound participant or project manager required" })
+      const note = input.note?.trim().slice(0, 2000) || null
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* recordEvent(tx, {
+              projectID: task.project_id,
+              entity: "task",
+              entityID: task.id,
+              type: "task.reminded",
+              payload: { note, by: input.sessionID, status: task.status },
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+      return { taskID: task.id, status: task.status }
+    })
+
+    const reportTask = Effect.fn("Cvis.reportTask")(function* (input: { taskID: string; sessionID: string; text: string }) {
+      const { task, actor } = yield* loadTaskContext(input)
+      if (task.status !== "running" && task.status !== "verifying")
+        return yield* new InvalidTransitionError({ entity: "task", id: task.id, from: task.status, to: "running or verifying required" })
+      yield* requireActiveGoal(task)
+      if (actor.task_id !== task.id)
+        return yield* new InvalidTransitionError({ entity: "task", id: task.id, from: input.sessionID, to: "bound worker required" })
+      const text = input.text.trim()
+      if (text.length === 0 || text.length > 4000)
+        return yield* new InvalidTransitionError({ entity: "task", id: task.id, from: `${text.length} chars`, to: "report text must be 1..4000 characters" })
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* recordEvent(tx, {
+              projectID: task.project_id,
+              entity: "task",
+              entityID: task.id,
+              type: "task.reported",
+              payload: { text, by: input.sessionID, status: task.status },
+            })
+          }),
+        )
+        .pipe(Effect.orDie)
+      return { taskID: task.id, status: task.status }
+    })
+
+    const listTaskEvents = Effect.fn("Cvis.listTaskEvents")(function* (input: { taskID: string; sessionID: string; limit?: number }) {
+      const { task } = yield* loadTaskContext(input)
+      const limit = input.limit ?? 100
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)
+        return yield* new InvalidTransitionError({ entity: "task", id: task.id, from: String(input.limit), to: "limit must be 1..200" })
+      const rows = yield* db
+        .select()
+        .from(CvisEventTable)
+        .where(and(eq(CvisEventTable.entity_kind, "task"), eq(CvisEventTable.entity_id, task.id)))
+        .orderBy(CvisEventTable.sequence)
+        .limit(limit)
+        .all()
+        .pipe(Effect.orDie)
+      return rows.map((row) => ({ id: row.id, type: row.type, payload: row.payload as unknown, time: row.time_created }))
     })
 
     const cancelTask = Effect.fn("Cvis.cancelTask")(function* (input: { taskID: string; reason?: string }) {
@@ -3331,6 +3656,11 @@ const layer = Layer.effect(
       recover,
       claimTask,
       pauseTask,
+      sweepOrphanedTasks,
+      runCheckCommand,
+      remindTask,
+      reportTask,
+      listTaskEvents,
       cancelTask,
       submitResult,
       inbox,

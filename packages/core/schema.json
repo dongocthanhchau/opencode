@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "baa85bee-74d7-416b-9633-479bdd8c5d7a",
+  "id": "546b13da-77a2-499c-b860-546053af9739",
   "prevIds": [
-    "a64c3932-46da-4e5d-8d77-d634078e0086"
+    "baa85bee-74d7-416b-9633-479bdd8c5d7a"
   ],
   "ddl": [
     {
@@ -2245,6 +2245,16 @@
       "table": "memory_fact"
     },
     {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'project'",
+      "generated": null,
+      "name": "scope",
+      "entityType": "columns",
+      "table": "memory_fact"
+    },
+    {
       "type": "real",
       "notNull": true,
       "autoincrement": false,
@@ -2341,6 +2351,16 @@
       "default": "'active'",
       "generated": null,
       "name": "status",
+      "entityType": "columns",
+      "table": "memory_item"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'project'",
+      "generated": null,
+      "name": "scope",
       "entityType": "columns",
       "table": "memory_item"
     },

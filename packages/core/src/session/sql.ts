@@ -192,6 +192,11 @@ export const MemoryFactTable = sqliteTable(
     vault_path: text(),
     kind: text().notNull().default("fact"),
     source: text().notNull().default("session"),
+    // Visibility tier: "session" (originating session only), "project"
+    // (all sessions of the project), "user"/"system" (global rows with
+    // project_id NULL, visible to every session). Legacy rows predate the
+    // column and default to "project", preserving previous behavior.
+    scope: text().notNull().default("project"),
     trust: real().notNull().default(1.0),
     ttl_days: integer(),
     fetched_at: integer(),
@@ -241,6 +246,8 @@ export const MemoryItemTable = sqliteTable(
       .references(() => ProjectTable.id, { onDelete: "cascade" }),
     kind: text().notNull().default("fact"),
     status: text().notNull().default("active"),
+    // Same visibility tiers as memory_fact.scope; see that column.
+    scope: text().notNull().default("project"),
     claim: text().notNull(),
     topic: text().notNull().default(""),
     keywords: text({ mode: "json" }).$type<string[]>(),

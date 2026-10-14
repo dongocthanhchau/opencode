@@ -133,14 +133,21 @@ const layer = Layer.effect(
           try: () => {
             const raw = new BunDatabase(Database.path(), { readonly: true })
             try {
+              // Tiered prefilter: project rows plus global (user/system)
+              // rows. Session-tier narrowing happens on the candidate rows
+              // below, where session_id is available.
               if (session.project_id == null) {
                 return raw
                   .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" IS NULL LIMIT 200`)
                   .all(ftsQuery) as { id: string }[]
               }
-              return raw
+              const scoped = raw
                 .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" = ? LIMIT 200`)
                 .all(ftsQuery, session.project_id) as { id: string }[]
+              const global = raw
+                .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" IS NULL LIMIT 200`)
+                .all(ftsQuery) as { id: string }[]
+              return [...scoped, ...global]
             } finally {
               raw.close()
             }
@@ -194,6 +201,8 @@ const layer = Layer.effect(
       const candidates: {
         id: string
         project_id: string | null
+        session_id: string | null
+        scope: string | null
         topic: string
         text: string
         trust: number
@@ -218,6 +227,8 @@ const layer = Layer.effect(
               .map((claim) => ({
                 id: row.id,
                 project_id: row.project_id,
+                session_id: row.session_id,
+                scope: row.scope,
                 topic: row.topic ?? "",
                 text: claim,
                 trust: row.trust ?? 1,
@@ -233,6 +244,8 @@ const layer = Layer.effect(
           .map((row) => ({
             id: row.id,
             project_id: row.project_id,
+            session_id: row.session_id,
+            scope: row.scope,
             topic: row.topic ?? "",
             text: row.claim,
             trust: row.trust ?? 1,
@@ -245,11 +258,20 @@ const layer = Layer.effect(
 
       const now = Date.now()
       const queryEmbedding = yield* embed(query)
+      // Tiered visibility: session rows only inside their own session,
+      // project rows inside the project, user/system rows everywhere.
+      // Legacy rows default to the project tier via the column default.
+      const visible = (row: { scope: string | null; project_id: string | null; session_id: string | null }) => {
+        if (row.scope === "session") return row.session_id === input.sessionID
+        if (row.scope === "project") return row.project_id === session.project_id
+        if (row.scope === "user" || row.scope === "system") return row.project_id == null
+        return row.project_id === session.project_id
+      }
       const scored: { id: string; line: string; score: number; goal: boolean }[] = []
       const scoredIDs = new Set<string>()
       const scoredText = new Set<string>()
       for (const row of candidates) {
-        if (row.project_id !== session.project_id) continue
+        if (!visible(row)) continue
         if (scoredText.has(normalized(row.text))) continue
         const ageDays = Math.max(0, (now - (row.time_created ?? now)) / 86_400_000)
         if (row.ttl_days != null && ageDays > row.ttl_days) continue
@@ -292,8 +314,7 @@ const layer = Layer.effect(
               .all()
               .pipe(Effect.orDie)
             for (const row of boostedRows) {
-              if (row.status === "superseded" || row.status === "deleted" || row.project_id !== session.project_id)
-                continue
+              if (row.status === "superseded" || row.status === "deleted" || !visible(row)) continue
               if (tombstoned.has(row.hash ?? "")) continue
               if (scoredIDs.has(row.id)) continue
               if (scoredText.has(normalized(row.claim))) continue

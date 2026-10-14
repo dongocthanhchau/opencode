@@ -54,7 +54,24 @@ export interface Interface {
   readonly runCaptureJobOnce: (input: {
     owner: string
   }) => Effect.Effect<{ ran: boolean; id?: string; status?: string }, JobConflict>
+  // Tiered memory: explicit global memories plus promotion of
+  // session-scoped captures up to project visibility.
+  readonly remember: (input: {
+    scope: "user" | "system"
+    text: string
+    topic?: string
+  }) => Effect.Effect<{ factID: string; itemID: string; deduped: boolean }, ScopeError>
+  readonly setScope: (input: {
+    id: string
+    scope: "session" | "project"
+    sessionID: SessionID
+  }) => Effect.Effect<{ id: string; scope: string }, ScopeError>
 }
+
+export class ScopeError extends Schema.TaggedErrorClass<ScopeError>()("MemoryScopeError", {
+  id: Schema.String,
+  reason: Schema.String,
+}) {}
 
 export class JobNotFound extends Schema.TaggedErrorClass<JobNotFound>()("MemoryJobNotFound", {
   id: Schema.String,
@@ -384,6 +401,9 @@ const layer = Layer.effect(
                     vault_path: null,
                     kind: "fact",
                     source: "session",
+                    // Fresh captures stay visible to the originating session
+                    // only; promotion to project is an explicit act below.
+                    scope: "session",
                     trust: 1.0,
                     fetched_at: Date.now(),
                     hash,
@@ -427,6 +447,7 @@ const layer = Layer.effect(
                     id: newItemID,
                     project_id: session.project_id,
                     kind: "fact",
+                    scope: "session",
                     status: "active",
                     claim: prepared.claim,
                     topic,
@@ -749,6 +770,122 @@ const layer = Layer.effect(
       return { ran: true as const, id: claimed.id, status: "done" }
     })
 
+    const remember = Effect.fn("MemoryCapture.remember")(function* (input: {
+      scope: "user" | "system"
+      text: string
+      topic?: string
+    }) {
+      const text = input.text.trim()
+      if (input.scope !== "user" && input.scope !== "system")
+        return yield* new ScopeError({ id: "", reason: "scope must be user or system" })
+      if (text.length < MIN_CLAIM_LEN)
+        return yield* new ScopeError({ id: "", reason: `text must be at least ${MIN_CLAIM_LEN} characters` })
+      if (BANNED.some((re) => re.test(text))) return yield* new ScopeError({ id: "", reason: "text is banned" })
+      const topic = (input.topic ?? "global").slice(0, 80)
+      const hash = createHash("sha256").update(`${input.scope}\n${text}`).digest("hex")
+      const existing = yield* db
+        .select({ id: MemoryItemTable.id })
+        .from(MemoryItemTable)
+        .where(and(eq(MemoryItemTable.hash, hash), isNull(MemoryItemTable.project_id)))
+        .all()
+        .pipe(Effect.orDie)
+      if (existing.length > 0) {
+        const factRow = yield* db
+          .select({ id: MemoryFactTable.id })
+          .from(MemoryFactTable)
+          .where(and(eq(MemoryFactTable.hash, hash), isNull(MemoryFactTable.project_id)))
+          .get()
+          .pipe(Effect.orDie)
+        return { factID: factRow?.id ?? "", itemID: existing[0].id, deduped: true as const }
+      }
+      const embedding = yield* embed(text)
+      const now = Date.now()
+      const factID = `mem_${now.toString(36)}_${hash.slice(0, 8)}`
+      const itemID = `mit_${now.toString(36)}_${hash.slice(0, 8)}`
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx
+              .insert(MemoryFactTable)
+              .values({
+                id: factID,
+                session_id: null,
+                project_id: null,
+                fact: text,
+                topic,
+                keywords: keywordsOf(text),
+                embedding: embedding ?? null,
+                vault_path: null,
+                kind: "fact",
+                source: input.scope,
+                scope: input.scope,
+                trust: 1.0,
+                fetched_at: now,
+                hash,
+              })
+              .onConflictDoNothing()
+              .run()
+            yield* tx
+              .insert(MemoryItemTable)
+              .values({
+                id: itemID,
+                project_id: null,
+                kind: "fact",
+                scope: input.scope,
+                status: "active",
+                claim: text,
+                topic,
+                keywords: keywordsOf(text),
+                embedding: embedding ?? null,
+                trust: 1.0,
+                version: 1,
+                source_id: null,
+                session_id: null,
+                vault_path: null,
+                hash,
+                fetched_at: now,
+              })
+              .onConflictDoNothing()
+              .run()
+          }),
+        )
+        .pipe(Effect.orDie)
+      return { factID, itemID, deduped: false as const }
+    })
+
+    const setScope = Effect.fn("MemoryCapture.setScope")(function* (input: {
+      id: string
+      scope: "session" | "project"
+      sessionID: SessionID
+    }) {
+      if (input.scope !== "session" && input.scope !== "project")
+        return yield* new ScopeError({ id: input.id, reason: "scope must be session or project" })
+      const actor = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!actor) return yield* new ScopeError({ id: input.id, reason: "actor session not found" })
+      const row = yield* db.select().from(MemoryItemTable).where(eq(MemoryItemTable.id, input.id)).get().pipe(Effect.orDie)
+      if (!row) return yield* new ScopeError({ id: input.id, reason: "memory item not found" })
+      if (row.scope !== "session" && row.scope !== "project")
+        return yield* new ScopeError({ id: input.id, reason: "only session/project items can change scope" })
+      if (row.project_id == null || actor.project_id == null || row.project_id !== actor.project_id)
+        return yield* new ScopeError({ id: input.id, reason: "item and actor session must share a project" })
+      if (input.scope === "project" && row.scope === "session") {
+        yield* db.update(MemoryItemTable).set({ scope: "project" }).where(eq(MemoryItemTable.id, input.id)).run().pipe(Effect.orDie)
+        return { id: input.id, scope: "project" }
+      }
+      if (input.scope === "session" && row.scope === "project") {
+        if (row.session_id !== input.sessionID)
+          return yield* new ScopeError({ id: input.id, reason: "only the originating session can take an item back" })
+        yield* db.update(MemoryItemTable).set({ scope: "session" }).where(eq(MemoryItemTable.id, input.id)).run().pipe(Effect.orDie)
+        return { id: input.id, scope: "session" }
+      }
+      return { id: input.id, scope: row.scope ?? input.scope }
+    })
+
     return Service.of({
       capture,
       enqueueCaptureJob,
@@ -758,6 +895,8 @@ const layer = Layer.effect(
       releaseStaleJobs,
       listCaptureJobs,
       runCaptureJobOnce,
+      remember,
+      setScope,
     })
   }),
 )

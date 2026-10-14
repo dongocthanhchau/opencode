@@ -60,6 +60,11 @@ export const CvisCommand = cmd({
       .command(CvisScheduleCompleteCommand)
       .command(CvisScheduleEnableCommand)
       .command(CvisManagedDoctorCommand)
+      .command(CvisTaskSweepCommand)
+      .command(CvisExecCommand)
+      .command(CvisTaskRemindCommand)
+      .command(CvisTaskReportCommand)
+      .command(CvisTaskEventsCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -944,5 +949,109 @@ export const CvisManagedDoctorCommand = effectCmd({
         issues,
       }),
     )
+  }),
+})
+
+export const CvisTaskSweepCommand = effectCmd({
+  command: "task-sweep",
+  describe: "pause running tasks whose worker session is archived, missing, or never assigned",
+  instance: false,
+  builder: (yargs) => yargs.option("project", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.taskSweep")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.sweepOrphanedTasks({ projectID: (args.project as string | undefined) ?? undefined }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisExecCommand = effectCmd({
+  command: "exec <task>",
+  describe: "run exactly one task-allowlisted command for a bound worker session and print its receipt",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("task", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("command", { type: "string", demandOption: true })
+      .option("timeout-ms", { type: "number" }),
+  handler: Effect.fn("Cli.cvis.exec")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.runCheckCommand({
+        taskID: args.task as string,
+        sessionID: args.session as string,
+        command: args.command as string,
+        timeoutMs: (args["timeout-ms"] as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTaskRemindCommand = effectCmd({
+  command: "task-remind <task>",
+  describe: "record a reminder event on any open task (participant or project manager)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("task", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("note", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.taskRemind")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.remindTask({
+        taskID: args.task as string,
+        sessionID: args.session as string,
+        note: (args.note as string | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTaskReportCommand = effectCmd({
+  command: "task-report <task>",
+  describe: "record a progress report event from the bound worker of a running task",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("task", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("text", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.taskReport")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.reportTask({
+        taskID: args.task as string,
+        sessionID: args.session as string,
+        text: args.text as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTaskEventsCommand = effectCmd({
+  command: "task-events <task>",
+  describe: "list reminder/report (and other) events for one task, oldest first",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("task", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("limit", { type: "number" }),
+  handler: Effect.fn("Cli.cvis.taskEvents")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.listTaskEvents({
+        taskID: args.task as string,
+        sessionID: args.session as string,
+        limit: (args.limit as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
   }),
 })

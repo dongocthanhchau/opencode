@@ -29,6 +29,8 @@ export const MemoryCommand = cmd({
       .command(MemoryJobReleaseCommand)
       .command(MemoryJobListCommand)
       .command(MemoryJobRunOnceCommand)
+      .command(MemoryRememberCommand)
+      .command(MemorySetScopeCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -256,6 +258,7 @@ function jobFailureMessage(cause: unknown): string {
     const tagged = failure as { _tag: string; id?: unknown; reason?: unknown }
     if (tagged._tag === "MemoryJobNotFound") return `memory job not found: ${String(tagged.id)}`
     if (tagged._tag === "MemoryJobConflict") return `memory job conflict ${String(tagged.id)}: ${String(tagged.reason)}`
+    if (tagged._tag === "MemoryScopeError") return `memory scope error ${String(tagged.id)}: ${String(tagged.reason)}`
   }
   return Cause.pretty(cause as never)
 }
@@ -368,6 +371,50 @@ export const MemoryJobRunOnceCommand = effectCmd({
   handler: Effect.fn("Cli.memory.jobRunOnce")(function* (args) {
     const svc = yield* MemoryCapture.Service
     const out = yield* runJob(svc.runCaptureJobOnce({ owner: args.owner as string }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const MemoryRememberCommand = effectCmd({
+  command: "remember",
+  describe: "store an explicit global (user/system) memory visible to every session",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("scope", { type: "string", demandOption: true, choices: ["user", "system"] })
+      .option("text", { type: "string", demandOption: true })
+      .option("topic", { type: "string" }),
+  handler: Effect.fn("Cli.memory.remember")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(
+      svc.remember({
+        scope: args.scope as "user" | "system",
+        text: args.text as string,
+        topic: (args.topic as string | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const MemorySetScopeCommand = effectCmd({
+  command: "set-scope <id> <scope>",
+  describe: "promote a session memory to project visibility (or take it back)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .positional("scope", { type: "string", demandOption: true, choices: ["session", "project"] })
+      .option("session", { type: "string", demandOption: true, describe: "actor session in the same project" }),
+  handler: Effect.fn("Cli.memory.setScope")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(
+      svc.setScope({
+        id: args.id as string,
+        scope: args.scope as "session" | "project",
+        sessionID: SessionID.make(args.session as string),
+      }),
+    )
     UI.println(JSON.stringify(out))
   }),
 })
