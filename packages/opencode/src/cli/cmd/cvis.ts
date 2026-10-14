@@ -34,8 +34,12 @@ export const CvisCommand = cmd({
       .command(CvisGoalProgressCommand)
       .command(CvisTaskReviseCommand)
       .command(CvisBudgetCommand)
+      .command(CvisBudgetExtendCommand)
       .command(CvisTemplateCreateCommand)
       .command(CvisTemplateListCommand)
+      .command(CvisTemplateStatusCommand)
+      .command(CvisTemplateRolloutCommand)
+      .command(CvisTemplateMetricsCommand)
       .command(CvisTemplateRenderCommand)
       .command(CvisContextPackCommand)
       .command(CvisHandoffCommand)
@@ -54,6 +58,10 @@ export const CvisCommand = cmd({
       .command(CvisManagedListCommand)
       .command(CvisManagedLinkCommand)
       .command(CvisManagedStatusCommand)
+      .command(CvisManagedMetadataCommand)
+      .command(CvisPluginInstallCommand)
+      .command(CvisPluginImportSkillCommand)
+      .command(CvisPluginExportSkillCommand)
       .command(CvisScheduleRegisterCommand)
       .command(CvisScheduleListCommand)
       .command(CvisScheduleTickCommand)
@@ -65,6 +73,13 @@ export const CvisCommand = cmd({
       .command(CvisTaskRemindCommand)
       .command(CvisTaskReportCommand)
       .command(CvisTaskEventsCommand)
+      .command(CvisSessionSpawnCommand)
+      .command(CvisCapProposeCommand)
+      .command(CvisCapStatusCommand)
+      .command(CvisCapListCommand)
+      .command(CvisMcpProbeCommand)
+      .command(CvisHarnessAnalyzeCommand)
+      .command(CvisHarnessApplyCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -146,9 +161,18 @@ export const CvisTaskCreateCommand = effectCmd({
       .option("role", { type: "string", demandOption: true })
       .option("goal", { type: "string" })
       .option("description", { type: "string" })
-      .option("dep", { type: "string" }),
+      .option("dep", { type: "string" })
+      .option("acceptance", { type: "string", describe: "checklist as JSON [{id,label,weight}]" }),
   handler: Effect.fn("Cli.cvis.taskCreate")(function* (args) {
     const svc = yield* Orchestration.Service
+    let acceptance: { id: string; label: string; weight: number }[] | undefined
+    if (typeof args.acceptance === "string") {
+      try {
+        acceptance = JSON.parse(args.acceptance) as { id: string; label: string; weight: number }[]
+      } catch {
+        return yield* fail("acceptance must be JSON")
+      }
+    }
     const out = yield* run(svc
       .createTask({
         projectID: args.project as string,
@@ -156,6 +180,7 @@ export const CvisTaskCreateCommand = effectCmd({
         dependencies: args.dep ? (args.dep as string).split(",").map((s) => s.trim()).filter((s) => s.length > 0) : undefined,
         title: args.title as string,
         description: (args.description as string | undefined) ?? undefined,
+        acceptance,
         role: args.role as never,
 }))
     UI.println(out.id)
@@ -554,6 +579,28 @@ export const CvisBudgetCommand = effectCmd({
   }),
 })
 
+export const CvisBudgetExtendCommand = effectCmd({
+  command: "budget-extend <kind> <id>",
+  describe: "step up a goal/task budget cap when work is live (files approval inbox past the ceiling)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("kind", { type: "string", demandOption: true, choices: ["goal", "task"] })
+      .positional("id", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true, describe: "bound participant requesting" }),
+  handler: Effect.fn("Cli.cvis.budgetExtend")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.requestBudgetExtension({
+        kind: args.kind as "goal" | "task",
+        id: args.id as string,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
 export const CvisTemplateCreateCommand = effectCmd({
   command: "template-create <name>",
   describe: "create a versioned prompt template",
@@ -563,7 +610,8 @@ export const CvisTemplateCreateCommand = effectCmd({
       .positional("name", { type: "string", demandOption: true })
       .option("role", { type: "string" })
       .option("body", { type: "string", demandOption: true })
-      .option("inputs", { type: "string", describe: "inputs as JSON" }),
+      .option("inputs", { type: "string", describe: "inputs as JSON" })
+      .option("status", { type: "string", describe: "stable or canary (default stable)" }),
   handler: Effect.fn("Cli.cvis.templateCreate")(function* (args) {
     const svc = yield* Orchestration.Service
     const out = yield* run(
@@ -572,6 +620,7 @@ export const CvisTemplateCreateCommand = effectCmd({
         role: (args.role as string | undefined) ?? undefined,
         body: args.body as string,
         inputs: args.inputs ? (JSON.parse(args.inputs as string) as { name: string; required: boolean }[]) : undefined,
+        status: (args.status as string | undefined) ?? undefined,
       }),
     )
     UI.println(JSON.stringify(out))
@@ -586,6 +635,66 @@ export const CvisTemplateListCommand = effectCmd({
   handler: Effect.fn("Cli.cvis.templateList")(function* (args) {
     const svc = yield* Orchestration.Service
     const out = yield* run(svc.listTemplates({ role: (args.role as string | undefined) ?? undefined }))
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTemplateStatusCommand = effectCmd({
+  command: "template-status <name> <version> <status>",
+  describe: "promote a canary (stable), retire a version, or send back to canary",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("name", { type: "string", demandOption: true })
+      .positional("version", { type: "number", demandOption: true })
+      .positional("status", { type: "string", demandOption: true, choices: ["stable", "canary", "retired"] })
+      .option("session", { type: "string", demandOption: true, describe: "manager approving" }),
+  handler: Effect.fn("Cli.cvis.templateStatus")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.setTemplateStatus({
+        name: args.name as string,
+        version: args.version as number,
+        status: args.status as string,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTemplateRolloutCommand = effectCmd({
+  command: "template-rollout <name> <version>",
+  describe: "set the rollout percent (0-100) of a canary template version",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("name", { type: "string", demandOption: true })
+      .positional("version", { type: "number", demandOption: true })
+      .option("pct", { type: "number", demandOption: true })
+      .option("session", { type: "string", demandOption: true, describe: "manager approving" }),
+  handler: Effect.fn("Cli.cvis.templateRollout")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.setTemplateRollout({
+        name: args.name as string,
+        version: args.version as number,
+        pct: args.pct as number,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisTemplateMetricsCommand = effectCmd({
+  command: "template-metrics <name>",
+  describe: "per-version runs, pass rate, and avg tokens for a template",
+  instance: false,
+  builder: (yargs) => yargs.positional("name", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.templateMetrics")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(svc.templateMetrics({ name: args.name as string }))
     UI.println(JSON.stringify(out))
   }),
 })
@@ -768,6 +877,109 @@ export const CvisManagedStatusCommand = effectCmd({
     const svc = yield* Orchestration.Service
     yield* run(svc.setManagedProjectStatus({ id: args.id as string, status: args.status as string }))
     UI.println("ok")
+  }),
+})
+
+export const CvisManagedMetadataCommand = effectCmd({
+  command: "managed-metadata",
+  describe: "merge metadata on a managed project (manager of the linked project only)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("id", { type: "string" })
+      .option("slug", { type: "string" })
+      .option("metadata", { type: "string", demandOption: true, describe: "merge object as JSON" })
+      .option("session", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.managedMetadata")(function* (args) {
+    const svc = yield* Orchestration.Service
+    let metadata: Record<string, unknown>
+    try {
+      metadata = JSON.parse(args.metadata as string) as Record<string, unknown>
+    } catch {
+      return yield* fail("metadata must be JSON")
+    }
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return yield* fail("metadata must be a JSON object")
+    const out = yield* run(
+      svc.setManagedMetadata({
+        id: (args.id as string | undefined) ?? undefined,
+        slug: (args.slug as string | undefined) ?? undefined,
+        metadata,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisPluginInstallCommand = effectCmd({
+  command: "plugin-install",
+  describe: "validate a plugin manifest and route it to the registry/template flows",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("manifest", { type: "string", demandOption: true, describe: "manifest as JSON" })
+      .option("session", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.pluginInstall")(function* (args) {
+    const svc = yield* Orchestration.Service
+    let manifest: Record<string, unknown>
+    try {
+      manifest = JSON.parse(args.manifest as string) as Record<string, unknown>
+    } catch {
+      return yield* fail("manifest must be JSON")
+    }
+    const out = yield* run(
+      svc.installPlugin({
+        projectID: args.project as string,
+        manifest,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisPluginImportSkillCommand = effectCmd({
+  command: "plugin-import-skill",
+  describe: "import a SKILL.md directory (agentskills.io) as a proposed skill",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("dir", { type: "string", demandOption: true, describe: "directory inside the project worktree" })
+      .option("session", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.pluginImportSkill")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.importSkillDir({
+        projectID: args.project as string,
+        dir: args.dir as string,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisPluginExportSkillCommand = effectCmd({
+  command: "plugin-export-skill <id>",
+  describe: "export an active skill capability to SKILL.md (manager only, no overwrite)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .option("dir", { type: "string", demandOption: true, describe: "directory inside the project worktree" })
+      .option("session", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.cvis.pluginExportSkill")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.exportSkill({
+        id: args.id as string,
+        dir: args.dir as string,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
   }),
 })
 
@@ -1050,6 +1262,178 @@ export const CvisTaskEventsCommand = effectCmd({
         taskID: args.task as string,
         sessionID: args.session as string,
         limit: (args.limit as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisSessionSpawnCommand = effectCmd({
+  command: "session-spawn",
+  describe: "spawn a worker session inside a project worktree (manager only, live-session cap enforced)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("actor", { type: "string", demandOption: true, describe: "manager session spawning" })
+      .option("role", { type: "string" })
+      .option("task", { type: "string" })
+      .option("directory", { type: "string", describe: "subdir inside the project worktree" })
+      .option("title", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.sessionSpawn")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.spawnSession({
+        projectID: args.project as string,
+        actorSessionID: args.actor as string,
+        role: (args.role as "manager" | "researcher" | "implementer" | "verifier" | "maintenance" | undefined) ?? undefined,
+        taskID: (args.task as string | undefined) ?? undefined,
+        directory: (args.directory as string | undefined) ?? undefined,
+        title: (args.title as string | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisCapProposeCommand = effectCmd({
+  command: "cap-propose",
+  describe: "propose a tool/skill/MCP capability for a project (any bound participant)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("kind", { type: "string", demandOption: true, choices: ["tool", "skill", "mcp"] })
+      .option("name", { type: "string", demandOption: true })
+      .option("description", { type: "string", demandOption: true })
+      .option("source", { type: "string" })
+      .option("payload", { type: "string", describe: "install payload as JSON" })
+      .option("reason", { type: "string" })
+      .option("session", { type: "string", demandOption: true, describe: "proposing session" }),
+  handler: Effect.fn("Cli.cvis.capPropose")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.proposeCapability({
+        projectID: args.project as string,
+        kind: args.kind as string,
+        name: args.name as string,
+        description: args.description as string,
+        source: (args.source as string | undefined) ?? undefined,
+        installPayload: args.payload ? (JSON.parse(args.payload as string) as Record<string, unknown>) : undefined,
+        reason: (args.reason as string | undefined) ?? undefined,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisCapStatusCommand = effectCmd({
+  command: "cap-status <id> <status>",
+  describe: "move a capability proposed->canary->active->deprecated (manager only)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .positional("status", { type: "string", demandOption: true, choices: ["canary", "active", "deprecated"] })
+      .option("session", { type: "string", demandOption: true, describe: "manager approving" }),
+  handler: Effect.fn("Cli.cvis.capStatus")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.setCapabilityStatus({
+        id: args.id as string,
+        status: args.status as string,
+        actorSessionID: args.session as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisCapListCommand = effectCmd({
+  command: "cap-list",
+  describe: "list capabilities of a project, optionally filtered",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("kind", { type: "string" })
+      .option("status", { type: "string" }),
+  handler: Effect.fn("Cli.cvis.capList")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.listCapabilities({
+        projectID: args.project as string,
+        kind: (args.kind as string | undefined) ?? undefined,
+        status: (args.status as string | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisMcpProbeCommand = effectCmd({
+  command: "mcp-probe <id>",
+  describe: "live MCP handshake for a canary capability (records capability.probed)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true, describe: "bound participant probing" })
+      .option("timeout-ms", { type: "number" }),
+  handler: Effect.fn("Cli.cvis.mcpProbe")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.probeMcpCapability({
+        id: args.id as string,
+        actorSessionID: args.session as string,
+        timeoutMs: (args["timeout-ms"] as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisHarnessAnalyzeCommand = effectCmd({
+  command: "harness-analyze",
+  describe: "analyze execution traces and file machine-checkable findings",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .option("project", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("window-ms", { type: "number" })
+      .option("stall-ms", { type: "number" }),
+  handler: Effect.fn("Cli.cvis.harnessAnalyze")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.analyzeTraces({
+        projectID: args.project as string,
+        actorSessionID: args.session as string,
+        windowMs: (args["window-ms"] as number | undefined) ?? undefined,
+        stallMs: (args["stall-ms"] as number | undefined) ?? undefined,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const CvisHarnessApplyCommand = effectCmd({
+  command: "harness-apply <event>",
+  describe: "approve (and execute) or reject a harness finding (manager only)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("event", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("reject", { type: "boolean", default: false }),
+  handler: Effect.fn("Cli.cvis.harnessApply")(function* (args) {
+    const svc = yield* Orchestration.Service
+    const out = yield* run(
+      svc.applyFinding({
+        findingEventID: args.event as string,
+        actorSessionID: args.session as string,
+        approve: !(args.reject as boolean),
       }),
     )
     UI.println(JSON.stringify(out))

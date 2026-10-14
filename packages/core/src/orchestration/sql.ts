@@ -89,6 +89,11 @@ export const CvisPromptTemplateTable = sqliteTable(
     version: integer().notNull().default(1),
     body: text().notNull(),
     inputs: text({ mode: "json" }).$type<{ name: string; required: boolean }[]>(),
+    // Canary lifecycle: new rewrites land as canary, serve a rollout
+    // bucket, and only replace the stable version on promote. Retired
+    // versions stay readable for audit and rollback comparison.
+    status: text().notNull().default("stable"),
+    canary_pct: integer().notNull().default(0),
     ...Timestamps,
   },
   (table) => [
@@ -142,6 +147,45 @@ export const CvisSessionBindingTable = sqliteTable(
     ...Timestamps,
   },
   (table) => [index("cvis_binding_project_idx").on(table.project_id), index("cvis_binding_task_idx").on(table.task_id)],
+)
+
+export const CvisCapabilityKind = ["tool", "skill", "mcp"] as const
+export type CvisCapabilityKind = (typeof CvisCapabilityKind)[number]
+
+export const CvisCapabilityStatus = ["proposed", "canary", "active", "deprecated"] as const
+export type CvisCapabilityStatus = (typeof CvisCapabilityStatus)[number]
+
+// Agent-proposed capabilities (tools, skills, MCP servers) with a
+// propose -> canary -> active -> deprecated lifecycle. Update means a
+// new version through the same flow; approving one version retires the
+// older active ones so rollback is always one status flip away.
+export const CvisCapabilityTable = sqliteTable(
+  "cvis_capability",
+  {
+    id: text().primaryKey(),
+    kind: text().notNull(),
+    name: text().notNull(),
+    version: integer().notNull().default(1),
+    description: text().notNull(),
+    source: text(),
+    install_payload: text({ mode: "json" }).$type<Record<string, unknown>>(),
+    status: text().notNull().default("proposed"),
+    project_id: text()
+      .notNull()
+      .references(() => ProjectTable.id, { onDelete: "cascade" }),
+    proposed_by: text(),
+    reason: text(),
+    ...Timestamps,
+  },
+  (table) => [
+    uniqueIndex("cvis_capability_kind_name_version_project_idx").on(
+      table.kind,
+      table.name,
+      table.version,
+      table.project_id,
+    ),
+    index("cvis_capability_project_status_idx").on(table.project_id, table.status),
+  ],
 )
 
 export const CvisMessageTable = sqliteTable(

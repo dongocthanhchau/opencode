@@ -87,6 +87,24 @@ export default {
         );
       `)
       yield* tx.run(`
+        CREATE TABLE \`cvis_capability\` (
+          \`id\` text PRIMARY KEY,
+          \`kind\` text NOT NULL,
+          \`name\` text NOT NULL,
+          \`version\` integer DEFAULT 1 NOT NULL,
+          \`description\` text NOT NULL,
+          \`source\` text,
+          \`install_payload\` text,
+          \`status\` text DEFAULT 'proposed' NOT NULL,
+          \`project_id\` text NOT NULL,
+          \`proposed_by\` text,
+          \`reason\` text,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL,
+          CONSTRAINT \`fk_cvis_capability_project_id_project_id_fk\` FOREIGN KEY (\`project_id\`) REFERENCES \`project\`(\`id\`) ON DELETE CASCADE
+        );
+      `)
+      yield* tx.run(`
         CREATE TABLE \`cvis_check\` (
           \`id\` text PRIMARY KEY,
           \`task_id\` text NOT NULL,
@@ -171,6 +189,8 @@ export default {
           \`version\` integer DEFAULT 1 NOT NULL,
           \`body\` text NOT NULL,
           \`inputs\` text,
+          \`status\` text DEFAULT 'stable' NOT NULL,
+          \`canary_pct\` integer DEFAULT 0 NOT NULL,
           \`time_created\` integer NOT NULL,
           \`time_updated\` integer NOT NULL
         );
@@ -522,6 +542,12 @@ export default {
       `)
       yield* tx.run(`CREATE UNIQUE INDEX \`event_aggregate_seq_idx\` ON \`event\` (\`aggregate_id\`,\`seq\`);`)
       yield* tx.run(`CREATE INDEX \`event_aggregate_type_seq_idx\` ON \`event\` (\`aggregate_id\`,\`type\`,\`seq\`);`)
+      yield* tx.run(
+        `CREATE UNIQUE INDEX \`cvis_capability_kind_name_version_project_idx\` ON \`cvis_capability\` (\`kind\`,\`name\`,\`version\`,\`project_id\`);`,
+      )
+      yield* tx.run(
+        `CREATE INDEX \`cvis_capability_project_status_idx\` ON \`cvis_capability\` (\`project_id\`,\`status\`);`,
+      )
       yield* tx.run(`CREATE INDEX \`cvis_check_task_idx\` ON \`cvis_check\` (\`task_id\`);`)
       yield* tx.run(`CREATE UNIQUE INDEX \`cvis_check_task_check_idx\` ON \`cvis_check\` (\`task_id\`,\`check_id\`);`)
       yield* tx.run(

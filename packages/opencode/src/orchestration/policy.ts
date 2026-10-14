@@ -127,7 +127,7 @@ const layer = Layer.effect(
                   .pipe(Effect.orDie)
               : []
             if ((yield* ledger.spend({ goalID: goal.id })) >= goal.budget_tokens)
-              return yield* new Denied({ reason: "Project goal token budget exhausted" })
+              return yield* new Denied({ reason: "Project goal token budget exhausted (request extension via `cvis budget-extend`)" })
           }
         }
         if (task.scope?.max_tokens !== undefined) {
@@ -138,7 +138,7 @@ const layer = Layer.effect(
             .all()
             .pipe(Effect.orDie)
           if ((yield* ledger.spend({ taskID: task.id })) >= task.scope.max_tokens)
-            return yield* new Denied({ reason: "Task token budget exhausted" })
+            return yield* new Denied({ reason: "Task token budget exhausted (request extension via `cvis budget-extend`)" })
         }
         if (task.active_run_id) {
           const run = yield* db

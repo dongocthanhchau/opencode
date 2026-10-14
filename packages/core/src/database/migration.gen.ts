@@ -57,5 +57,7 @@ export const migrations = (
     import("./migration/20261013201225_cvis_managed_project"),
     import("./migration/20261013202702_cvis_schedule"),
     import("./migration/20261014030332_memory_scope"),
+    import("./migration/20261014041625_template_canary"),
+    import("./migration/20261014043650_capability_registry"),
   ])
 ).map((module) => module.default) satisfies DatabaseMigration.Migration[]

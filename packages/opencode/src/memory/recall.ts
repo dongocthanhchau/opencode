@@ -2,7 +2,6 @@ import { createHash } from "node:crypto"
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
-import { Database as BunDatabase } from "bun:sqlite"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import {
   MemoryFactTable,
@@ -128,31 +127,35 @@ const layer = Layer.effect(
       const ftsQuery = [...keywords, ...goalKeywords.filter((kw) => !keywords.includes(kw))]
         .map((kw) => '"' + kw + '"')
         .join(" OR ")
-      const searchFts = (table: string) =>
-        Effect.try({
-          try: () => {
-            const raw = new BunDatabase(Database.path(), { readonly: true })
-            try {
-              // Tiered prefilter: project rows plus global (user/system)
-              // rows. Session-tier narrowing happens on the candidate rows
-              // below, where session_id is available.
-              if (session.project_id == null) {
-                return raw
-                  .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" IS NULL LIMIT 200`)
-                  .all(ftsQuery) as { id: string }[]
-              }
-              const scoped = raw
-                .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" = ? LIMIT 200`)
-                .all(ftsQuery, session.project_id) as { id: string }[]
-              const global = raw
-                .query(`SELECT "id" FROM "${table}" WHERE "${table}" MATCH ? AND "project_id" IS NULL LIMIT 200`)
-                .all(ftsQuery) as { id: string }[]
-              return [...scoped, ...global]
-            } finally {
-              raw.close()
-            }
-          },
-          catch: (cause) => new Error("fts failed: " + String(cause)),
+      // Tiered prefilter through the same connection (no separate
+      // read-only reopen, which breaks under :memory: test DBs and
+      // doubles connections in production): project rows plus global
+      // (user/system) rows. Session-tier narrowing happens on the
+      // candidate rows below, where session_id is available.
+      // Query failures die loudly here; the live prompt path wraps
+      // recall with orElseSucceed while the CLI surfaces the defect.
+      const ftsIn = (table: "memory_fact_fts" | "memory_item_fts", projectID: string | null) => {
+        const query =
+          table === "memory_fact_fts"
+            ? projectID == null
+              ? sql`SELECT "id" FROM "memory_fact_fts" WHERE "memory_fact_fts" MATCH ${ftsQuery} AND "project_id" IS NULL LIMIT 200`
+              : sql`SELECT "id" FROM "memory_fact_fts" WHERE "memory_fact_fts" MATCH ${ftsQuery} AND "project_id" = ${projectID} LIMIT 200`
+            : projectID == null
+              ? sql`SELECT "id" FROM "memory_item_fts" WHERE "memory_item_fts" MATCH ${ftsQuery} AND "project_id" IS NULL LIMIT 200`
+              : sql`SELECT "id" FROM "memory_item_fts" WHERE "memory_item_fts" MATCH ${ftsQuery} AND "project_id" = ${projectID} LIMIT 200`
+        return db
+          .run(query)
+          .pipe(
+            Effect.orDie,
+            Effect.map((rows) => (rows as unknown as { id: string }[]).map((r) => r.id)),
+          )
+      }
+      const searchFts = (table: "memory_fact_fts" | "memory_item_fts") =>
+        Effect.gen(function* () {
+          const scoped = yield* ftsIn(table, session.project_id)
+          if (session.project_id == null) return scoped
+          const global = yield* ftsIn(table, null)
+          return [...scoped, ...global]
         })
       // No silent fallback: if the FTS index is missing or unreadable, recall
       // must fail loudly here. The live prompt path wraps recall with
@@ -160,7 +163,7 @@ const layer = Layer.effect(
       const [factHits, itemHits] = yield* Effect.all([searchFts("memory_fact_fts"), searchFts("memory_item_fts")], {
         concurrency: 2,
       })
-      const prefiltered = [...new Set([...factHits, ...itemHits].map((r) => (r as unknown as { id: string }).id))]
+      const prefiltered = [...new Set([...factHits, ...itemHits])]
       if (prefiltered.length === 0) return undefined
 
       const [factRows, itemRows] = yield* Effect.all([
@@ -239,7 +242,7 @@ const layer = Layer.effect(
               })),
           ),
         ...itemRows
-          .filter((row) => row.status !== "superseded" && row.status !== "deleted")
+          .filter((row) => row.status !== "superseded" && row.status !== "deleted" && row.status !== "stale")
           .filter((row) => !tombstoned.has(row.hash ?? ""))
           .map((row) => ({
             id: row.id,
@@ -314,7 +317,7 @@ const layer = Layer.effect(
               .all()
               .pipe(Effect.orDie)
             for (const row of boostedRows) {
-              if (row.status === "superseded" || row.status === "deleted" || !visible(row)) continue
+              if (row.status === "superseded" || row.status === "deleted" || row.status === "stale" || !visible(row)) continue
               if (tombstoned.has(row.hash ?? "")) continue
               if (scoredIDs.has(row.id)) continue
               if (scoredText.has(normalized(row.claim))) continue

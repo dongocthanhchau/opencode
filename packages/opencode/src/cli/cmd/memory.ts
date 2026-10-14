@@ -31,6 +31,8 @@ export const MemoryCommand = cmd({
       .command(MemoryJobRunOnceCommand)
       .command(MemoryRememberCommand)
       .command(MemorySetScopeCommand)
+      .command(MemoryReviseCommand)
+      .command(MemoryRewriteCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -412,6 +414,46 @@ export const MemorySetScopeCommand = effectCmd({
       svc.setScope({
         id: args.id as string,
         scope: args.scope as "session" | "project",
+        sessionID: SessionID.make(args.session as string),
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const MemoryReviseCommand = effectCmd({
+  command: "revise <id>",
+  describe: "revise one memory claim (old version archived + tombstoned for rollback)",
+  instance: false,
+  builder: (yargs) =>
+    yargs
+      .positional("id", { type: "string", demandOption: true })
+      .option("session", { type: "string", demandOption: true })
+      .option("text", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.memory.revise")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(
+      svc.reviseMemory({
+        id: args.id as string,
+        sessionID: SessionID.make(args.session as string),
+        text: args.text as string,
+      }),
+    )
+    UI.println(JSON.stringify(out))
+  }),
+})
+
+export const MemoryRewriteCommand = effectCmd({
+  command: "rewrite",
+  describe: "merge duplicate claims and flag past-TTL items stale for one project",
+  instance: false,
+  builder: (yargs) =>
+    yargs.option("project", { type: "string", describe: "project ID (omit for global rows)" }).option("session", { type: "string", demandOption: true }),
+  handler: Effect.fn("Cli.memory.rewrite")(function* (args) {
+    const svc = yield* MemoryCapture.Service
+    const out = yield* runJob(
+      svc.rewriteProject({
+        projectID: (args.project as string | undefined) ?? null,
         sessionID: SessionID.make(args.session as string),
       }),
     )

@@ -76,15 +76,20 @@ const layer = Layer.effect(
               .pipe(Effect.orDie)
             if (!task) return yield* Effect.fail(new Error("Claimed task missing"))
             const pack = yield* orchestration.contextPack({ taskID: task.id })
+            const templateName =
+              task.role === "verifier"
+                ? "verify"
+                : task.role === "researcher"
+                  ? "research"
+                  : task.role === "manager"
+                    ? "plan"
+                    : "implement"
             const rendered = yield* orchestration.renderTemplate({
-              name:
-                task.role === "verifier"
-                  ? "verify"
-                  : task.role === "researcher"
-                    ? "research"
-                    : task.role === "manager"
-                      ? "plan"
-                      : "implement",
+              name: templateName,
+              // Canary rollout bucket: the same task always renders the
+              // same version, and the used version lands in run.result
+              // so templateMetrics can compare stable vs canary.
+              bucketKey: task.id,
               vars: {
                 goal: task.title,
                 requirements: "Use the authoritative CVIS system context.",
@@ -120,6 +125,7 @@ const layer = Layer.effect(
                   prompt_tokens_estimate: estimate(text),
                   repeated_context_baseline_estimate: baseline,
                   usage_baseline: session.tokens,
+                  template: { name: templateName, version: rendered.version, status: rendered.status },
                 },
               })
               .where(eq(CvisTaskRunTable.id, claim.runID))

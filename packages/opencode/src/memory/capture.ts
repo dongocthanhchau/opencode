@@ -6,7 +6,9 @@ import { and, asc, desc, eq, inArray, isNull, ne } from "drizzle-orm"
 import { Cause, Context, Effect, Layer, Schema } from "effect"
 import { Database } from "@opencode-ai/core/database/database"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { ProjectV2 } from "@opencode-ai/core/project"
 import {
+  MemoryArchiveTable,
   MemoryEvidenceTable,
   MemoryFactTable,
   MemoryItemTable,
@@ -66,6 +68,19 @@ export interface Interface {
     scope: "session" | "project"
     sessionID: SessionID
   }) => Effect.Effect<{ id: string; scope: string }, ScopeError>
+  // Self-revision: correct or refine one claim (archives the old version
+  // with a tombstone so recall never resurrects it and rollback stays
+  // possible), plus periodic project rewrites that merge duplicates and
+  // flag past-TTL items stale for operator review.
+  readonly reviseMemory: (input: {
+    id: string
+    sessionID: SessionID
+    text: string
+  }) => Effect.Effect<{ oldID: string; itemID: string; deduped: boolean }, ScopeError>
+  readonly rewriteProject: (input: {
+    projectID: string | null
+    sessionID: SessionID
+  }) => Effect.Effect<{ merged: number; archived: number; stale: string[] }, ScopeError>
 }
 
 export class ScopeError extends Schema.TaggedErrorClass<ScopeError>()("MemoryScopeError", {
@@ -196,6 +211,49 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const { db } = yield* Database.Service
+
+    // Shared retirement path: snapshot the old claim into the archive,
+    // tombstone its hash so recall never resurrects it, then mark it
+    // superseded. Used by capture auto-merge, explicit revise, and the
+    // periodic rewrite alike so all three stay rollback-capable.
+    const supersedeItemTx = Effect.fn("MemoryCapture.supersedeItem")(function* (
+      tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+      old: typeof MemoryItemTable.$inferSelect,
+      input: { by: string; reason: string },
+    ) {
+      const now = Date.now()
+      yield* tx
+        .insert(MemoryArchiveTable)
+        .values({
+          id: `marc_${now.toString(36)}_${old.id.slice(-6)}`,
+          date: new Date(now).toISOString().slice(0, 10),
+          session_id: SessionID.make(input.by),
+          project_id: old.project_id,
+          payload: {
+            kind: "item-superseded",
+            reason: input.reason,
+            item: {
+              id: old.id,
+              claim: old.claim,
+              topic: old.topic,
+              scope: old.scope,
+              version: old.version,
+              trust: old.trust,
+              session_id: old.session_id,
+              hash: old.hash,
+            },
+          },
+          time_created: now,
+          time_updated: now,
+        })
+        .run()
+      yield* tx
+        .insert(MemoryTombstoneTable)
+        .values({ id: `mtomb_${now.toString(36)}_${old.hash.slice(0, 8)}`, hash: old.hash, project_id: old.project_id, time_created: now, time_updated: now })
+        .onConflictDoNothing()
+        .run()
+      yield* tx.update(MemoryItemTable).set({ status: "superseded" }).where(eq(MemoryItemTable.id, old.id)).run()
+    })
 
     const capture = Effect.fn("MemoryCapture.capture")(function* (input: { sessionID: SessionID }) {
       const session = yield* db
@@ -489,11 +547,7 @@ const layer = Layer.effect(
                       oldClaim: old.claim,
                     })
                     if (verdict === "supersedes") {
-                      yield* tx
-                        .update(MemoryItemTable)
-                        .set({ status: "superseded" })
-                        .where(eq(MemoryItemTable.id, old.id))
-                        .run()
+                      yield* supersedeItemTx(tx, old, { by: input.sessionID, reason: "capture-merge" })
                     }
                     if (verdict !== "unrelated") {
                       // Contradictions and drift link for review; both claims
@@ -886,6 +940,175 @@ const layer = Layer.effect(
       return { id: input.id, scope: row.scope ?? input.scope }
     })
 
+    const reviseMemory = Effect.fn("MemoryCapture.reviseMemory")(function* (input: {
+      id: string
+      sessionID: SessionID
+      text: string
+    }) {
+      const session = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!session || session.time_archived !== null)
+        return yield* new ScopeError({ id: input.id, reason: "active session required" })
+      const old = yield* db.select().from(MemoryItemTable).where(eq(MemoryItemTable.id, input.id)).get().pipe(Effect.orDie)
+      if (!old) return yield* new ScopeError({ id: input.id, reason: "memory item not found" })
+      if (old.status !== "active")
+        return yield* new ScopeError({ id: input.id, reason: "only active items can be revised" })
+      if ((old.project_id ?? null) !== (session.project_id ?? null))
+        return yield* new ScopeError({ id: input.id, reason: "item and session must share a project" })
+      const text = input.text.trim()
+      if (text.length < MIN_CLAIM_LEN)
+        return yield* new ScopeError({ id: input.id, reason: `text must be at least ${MIN_CLAIM_LEN} characters` })
+      if (text.length > 2000 || BANNED.some((re) => re.test(text)))
+        return yield* new ScopeError({ id: input.id, reason: "text too long or banned" })
+      const projectID = old.project_id
+      const newHash = createHash("sha256").update(`${projectID}\n${text}`).digest("hex")
+      if (newHash === old.hash) return { oldID: old.id, itemID: old.id, deduped: true as const }
+      const forgotten = yield* db
+        .select({ id: MemoryTombstoneTable.id })
+        .from(MemoryTombstoneTable)
+        .where(
+          projectID == null
+            ? and(eq(MemoryTombstoneTable.hash, newHash), isNull(MemoryTombstoneTable.project_id))
+            : and(eq(MemoryTombstoneTable.hash, newHash), eq(MemoryTombstoneTable.project_id, projectID)),
+        )
+        .all()
+        .pipe(Effect.orDie)
+      if (forgotten.length > 0) return yield* new ScopeError({ id: input.id, reason: "revised text was forgotten" })
+      const dup = yield* db
+        .select({ id: MemoryItemTable.id })
+        .from(MemoryItemTable)
+        .where(
+          projectID == null
+            ? and(eq(MemoryItemTable.hash, newHash), isNull(MemoryItemTable.project_id))
+            : and(eq(MemoryItemTable.hash, newHash), eq(MemoryItemTable.project_id, projectID)),
+        )
+        .all()
+        .pipe(Effect.orDie)
+      if (dup.length > 0) return { oldID: old.id, itemID: dup[0].id, deduped: true as const }
+      const embedding = yield* embed(text)
+      const now = Date.now()
+      const newItemID = `mit_${now.toString(36)}_${newHash.slice(0, 8)}`
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            yield* supersedeItemTx(tx, old, { by: String(input.sessionID), reason: "explicit-revise" })
+            yield* tx
+              .insert(MemoryItemTable)
+              .values({
+                id: newItemID,
+                project_id: projectID,
+                kind: old.kind,
+                scope: old.scope,
+                status: "active",
+                claim: text,
+                topic: old.topic ?? "",
+                keywords: keywordsOf(text),
+                embedding: embedding ?? null,
+                trust: old.trust ?? 1.0,
+                version: (old.version ?? 1) + 1,
+                source_id: old.source_id,
+                session_id: input.sessionID,
+                vault_path: null,
+                hash: newHash,
+                fetched_at: now,
+              })
+              .onConflictDoNothing()
+              .run()
+            yield* tx
+              .insert(MemoryRelationTable)
+              .values({ id: `mrel_${now.toString(36)}_${newItemID.slice(-6)}_${old.id.slice(-6)}`, from_id: newItemID, to_id: old.id, relation: "supersedes" })
+              .onConflictDoNothing()
+              .run()
+          }),
+        )
+        .pipe(Effect.orDie)
+      return { oldID: old.id, itemID: newItemID, deduped: false as const }
+    })
+
+    const normalizedClaim = (text: string) => text.normalize("NFKC").trim().replace(/\s+/g, " ")
+
+    const rewriteProject = Effect.fn("MemoryCapture.rewriteProject")(function* (input: {
+      projectID: string | null
+      sessionID: SessionID
+    }) {
+      const session = yield* db
+        .select()
+        .from(SessionTable)
+        .where(eq(SessionTable.id, input.sessionID))
+        .get()
+        .pipe(Effect.orDie)
+      if (!session || session.time_archived !== null)
+        return yield* new ScopeError({ id: "", reason: "active session required" })
+      if ((session.project_id ?? null) !== (input.projectID ?? null))
+        return yield* new ScopeError({ id: "", reason: "session must belong to the rewritten project" })
+      const projectID = input.projectID
+      const projectRef = projectID == null ? null : ProjectV2.ID.make(projectID)
+      const items = yield* db
+        .select()
+        .from(MemoryItemTable)
+        .where(
+          projectRef == null
+            ? and(eq(MemoryItemTable.status, "active"), isNull(MemoryItemTable.project_id))
+            : and(eq(MemoryItemTable.status, "active"), eq(MemoryItemTable.project_id, projectRef)),
+        )
+        .all()
+        .pipe(Effect.orDie)
+      const now = Date.now()
+      const groups = new Map<string, typeof items>()
+      for (const item of items) {
+        const key = normalizedClaim(item.claim)
+        const list = groups.get(key) ?? []
+        list.push(item)
+        groups.set(key, list)
+      }
+      let merged = 0
+      let archived = 0
+      const stale: string[] = []
+      yield* db
+        .transaction((tx) =>
+          Effect.gen(function* () {
+            for (const list of groups.values()) {
+              if (list.length < 2) continue
+              const ordered = [...list].sort((a, b) => (b.time_created ?? 0) - (a.time_created ?? 0) || (a.id < b.id ? 1 : -1))
+              const keeper = ordered[0]
+              for (const dup of ordered.slice(1)) {
+                yield* supersedeItemTx(tx, dup, { by: String(input.sessionID), reason: "rewrite-dedup" })
+                yield* tx
+                  .insert(MemoryRelationTable)
+                  .values({ id: `mrel_${now.toString(36)}_${keeper.id.slice(-6)}_${dup.id.slice(-6)}`, from_id: keeper.id, to_id: dup.id, relation: "supersedes" })
+                  .onConflictDoNothing()
+                  .run()
+                merged += 1
+                archived += 1
+              }
+            }
+            const fresh = yield* tx
+              .select()
+              .from(MemoryItemTable)
+              .where(
+                projectRef == null
+                  ? and(eq(MemoryItemTable.status, "active"), isNull(MemoryItemTable.project_id))
+                  : and(eq(MemoryItemTable.status, "active"), eq(MemoryItemTable.project_id, projectRef)),
+              )
+              .all()
+            for (const item of fresh) {
+              if (item.ttl_days == null) continue
+              const ageDays = Math.max(0, (now - (item.time_created ?? now)) / 86_400_000)
+              if (ageDays > item.ttl_days) {
+                yield* tx.update(MemoryItemTable).set({ status: "stale" }).where(eq(MemoryItemTable.id, item.id)).run()
+                stale.push(item.id)
+              }
+            }
+          }),
+        )
+        .pipe(Effect.orDie)
+      return { merged, archived, stale }
+    })
+
     return Service.of({
       capture,
       enqueueCaptureJob,
@@ -897,6 +1120,8 @@ const layer = Layer.effect(
       runCaptureJobOnce,
       remember,
       setScope,
+      reviseMemory,
+      rewriteProject,
     })
   }),
 )
