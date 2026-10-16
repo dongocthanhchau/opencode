@@ -120,7 +120,7 @@ const layer = Layer.effectDiscard(
         yield* add(ConfigProviderPlugin.Plugin)
         yield* add(VariantPlugin.Plugin)
       }),
-    ).pipe(Effect.withSpan("PluginInternal.boot"), Effect.forkScoped({ startImmediately: true }))
+    ).pipe(Effect.withSpan("PluginInternal.boot"))
   }),
 )
 
