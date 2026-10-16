@@ -381,7 +381,12 @@ export const ReadTool = Tool.define<
       parameters: Parameters,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context<Metadata>) =>
         run(params, ctx).pipe(
-          Effect.timeoutFail(() => new Error("ReadTool timed out after 120s: " + params.filepath), "120 seconds"),
+          Effect.timeout("120 seconds"),
+          Effect.flatMap((result) =>
+            result === undefined
+              ? Effect.fail(new Error("ReadTool timed out after 120s: " + params.filePath))
+              : Effect.succeed(result),
+          ),
           Effect.orDie,
         ),
     }
